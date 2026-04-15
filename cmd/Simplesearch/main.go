@@ -1,14 +1,13 @@
-package main 
-
-
-
+package main
 
 import (
-	"fmt"
-	"github.com/waiyneee/Simplesearch/internals/crawler"
+	"log"
+
+	"github.com/waiyneee/Simplesearch/internal/crawler"
 )
 
-func main(){
-	crawler.Crawler()
-	fmt.Println("Simplesearch ")
+func main() {
+	if err := crawler.Run(); err != nil {
+		log.Fatal(err)
+	}
 }
