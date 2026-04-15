@@ -7,7 +7,9 @@ import (
 )
 
 func main() {
-	if err := crawler.Run(); err != nil {
+	err := crawler.Run()
+	if err != nil {
+		log.Println("An error occured while crawling the data")
 		log.Fatal(err)
 	}
 }

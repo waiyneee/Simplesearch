@@ -5,10 +5,11 @@ import (
 	"io"
 	"net/http"
 	"time"
+	"log"
 )
 
 const (
-	userAgent   = "SimpleSearchBot/0.1 (+https://github.com/yourname/simplesearch)"
+	userAgent   = "SimpleSearchBot/0.1 (+https://github.com/waiyneee/Simplesearch)"
 	maxBodySize = 2 << 20 // 2 MB
 )
 
@@ -20,6 +21,7 @@ func Fetch(targetURL string) ([]byte, *http.Response, error) {
 	req, err := http.NewRequest(http.MethodGet, targetURL, nil)
 	if err != nil {
 		return nil, nil, err
+		log.Fatal(err)
 	}
 
 	req.Header.Set("User-Agent", userAgent)
@@ -37,7 +39,7 @@ func Fetch(targetURL string) ([]byte, *http.Response, error) {
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBodySize))
 	if err != nil {
-		resp.Body.Close()
+		defer resp.Body.Close()
 		return nil, resp, err
 	}
 
