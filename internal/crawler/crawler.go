@@ -11,8 +11,8 @@ import (
 
 type Config struct {
 	SeedURL           string
-	MaxPages          int   // max pages to schedule
-	MaxTotalBytes     int64 // max total downloaded bytes across successful pages
+	MaxPages          int
+	MaxTotalBytes     int64
 	MaxBytesPerPage   int64
 	Workers           int
 	UserAgent         string
@@ -44,23 +44,23 @@ type job struct {
 	Depth int
 }
 
-// Run starts crawl with worker pool + jobs/results channels.
-// Frontier is owned by coordinator goroutine only (no mutex needed).
-func Run(ctx context.Context, cfg Config) (CrawlStats, error) {
+// Run crawls pages and returns both crawl stats and successful page payloads.
+// Indexing is intentionally NOT done here (clean layering).
+func Run(ctx context.Context, cfg Config) (CrawlStats, []PageResult, error) {
 	var stats CrawlStats
 	stats.StartedAt = time.Now()
 
 	if cfg.SeedURL == "" {
-		return stats, fmt.Errorf("seed URL is required")
+		return stats, nil, fmt.Errorf("seed URL is required")
 	}
 	if cfg.MaxPages <= 0 {
 		cfg.MaxPages = 50
 	}
 	if cfg.MaxTotalBytes <= 0 {
-		cfg.MaxTotalBytes = 5 * 1024 * 1024 // 5 MB
+		cfg.MaxTotalBytes = 5 * 1024 * 1024
 	}
 	if cfg.MaxBytesPerPage <= 0 {
-		cfg.MaxBytesPerPage = 512 * 1024 // 512 KB/page
+		cfg.MaxBytesPerPage = 512 * 1024
 	}
 	if cfg.Workers <= 0 {
 		cfg.Workers = 4
@@ -71,10 +71,10 @@ func Run(ctx context.Context, cfg Config) (CrawlStats, error) {
 
 	seedParsed, err := url.Parse(cfg.SeedURL)
 	if err != nil {
-		return stats, fmt.Errorf("invalid seed URL: %w", err)
+		return stats, nil, fmt.Errorf("invalid seed URL: %w", err)
 	}
 	if seedParsed.Host != "en.wikipedia.org" {
-		return stats, fmt.Errorf("seed must be en.wikipedia.org")
+		return stats, nil, fmt.Errorf("seed must be en.wikipedia.org")
 	}
 
 	frontier := NewFrontier()
@@ -83,30 +83,21 @@ func Run(ctx context.Context, cfg Config) (CrawlStats, error) {
 	jobs := make(chan job)
 	results := make(chan PageResult, cfg.Workers*2)
 
-	var wg sync.WaitGroup
+	successPages := make([]PageResult, 0, cfg.MaxPages)
 
+	var wg sync.WaitGroup
 	worker := func() {
 		defer wg.Done()
 		for j := range jobs {
 			body, status, ferr := Fetch(ctx, j.URL, cfg.UserAgent, cfg.MaxBytesPerPage)
 			if ferr != nil {
-				results <- PageResult{
-					URL:   j.URL,
-					Depth: j.Depth,
-					Err:   ferr,
-				}
+				results <- PageResult{URL: j.URL, Depth: j.Depth, Err: ferr}
 				continue
 			}
 
 			base, perr := url.Parse(j.URL)
 			if perr != nil {
-				results <- PageResult{
-					URL:        j.URL,
-					Depth:      j.Depth,
-					StatusCode: status,
-					Bytes:      int64(len(body)),
-					Err:        perr,
-				}
+				results <- PageResult{URL: j.URL, Depth: j.Depth, StatusCode: status, Bytes: int64(len(body)), Err: perr}
 				continue
 			}
 
@@ -140,19 +131,10 @@ func Run(ctx context.Context, cfg Config) (CrawlStats, error) {
 	}
 
 	inFlight := 0
-
-	// schedule pushes one frontier item to jobs if allowed by limits.
 	schedule := func(item FrontierItem) bool {
-		if item.Depth > cfg.MaxDepthInclusive {
+		if item.Depth > cfg.MaxDepthInclusive || stats.Scheduled >= cfg.MaxPages || stats.TotalBytes >= cfg.MaxTotalBytes {
 			return false
 		}
-		if stats.Scheduled >= cfg.MaxPages {
-			return false
-		}
-		if stats.TotalBytes >= cfg.MaxTotalBytes {
-			return false
-		}
-
 		select {
 		case <-ctx.Done():
 			return false
@@ -163,7 +145,6 @@ func Run(ctx context.Context, cfg Config) (CrawlStats, error) {
 		}
 	}
 
-	// Prime workers initially.
 	for inFlight < cfg.Workers {
 		item, ok := frontier.Next()
 		if !ok {
@@ -172,11 +153,9 @@ func Run(ctx context.Context, cfg Config) (CrawlStats, error) {
 		_ = schedule(item)
 	}
 
-	// Coordinator loop
 	for inFlight > 0 {
 		select {
 		case <-ctx.Done():
-			// Stop scheduling new work; drain in-flight results.
 			for inFlight > 0 {
 				<-results
 				inFlight--
@@ -185,7 +164,7 @@ func Run(ctx context.Context, cfg Config) (CrawlStats, error) {
 			wg.Wait()
 			close(results)
 			stats.FinishedAt = time.Now()
-			return stats, ctx.Err()
+			return stats, successPages, ctx.Err()
 
 		case res := <-results:
 			inFlight--
@@ -196,6 +175,7 @@ func Run(ctx context.Context, cfg Config) (CrawlStats, error) {
 			} else {
 				stats.Successful++
 				stats.TotalBytes += res.Bytes
+				successPages = append(successPages, res)
 
 				log.Printf("ok scheduled=%d success=%d failed=%d depth=%d status=%d bytes=%d url=%s links=%d title=%q body_chars=%d",
 					stats.Scheduled, stats.Successful, stats.Failed,
@@ -209,15 +189,10 @@ func Run(ctx context.Context, cfg Config) (CrawlStats, error) {
 				}
 			}
 
-			reachedPages := stats.Scheduled >= cfg.MaxPages
-			reachedBytes := stats.TotalBytes >= cfg.MaxTotalBytes
-
-			if reachedPages || reachedBytes {
-				// No more scheduling; drain existing in-flight jobs.
+			if stats.Scheduled >= cfg.MaxPages || stats.TotalBytes >= cfg.MaxTotalBytes {
 				continue
 			}
 
-			// Keep workers busy up to configured count.
 			for inFlight < cfg.Workers {
 				item, ok := frontier.Next()
 				if !ok {
@@ -236,8 +211,8 @@ func Run(ctx context.Context, cfg Config) (CrawlStats, error) {
 
 	stats.FinishedAt = time.Now()
 	log.Printf("crawl finished scheduled=%d success=%d failed=%d total_bytes=%d duration=%s frontier_remaining=%d",
-		stats.Scheduled, stats.Successful, stats.Failed, stats.TotalBytes,
-		stats.FinishedAt.Sub(stats.StartedAt), frontier.Len())
+		stats.Scheduled, stats.Successful, stats.Failed,
+		stats.TotalBytes, stats.FinishedAt.Sub(stats.StartedAt), frontier.Len())
 
-	return stats, nil
+	return stats, successPages, nil
 }

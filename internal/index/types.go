@@ -1,6 +1,5 @@
 package index
 
-
 type Document struct {
 	ID     int
 	URL    string
@@ -8,7 +7,6 @@ type Document struct {
 	Body   string
 	Length int
 }
-
 
 type Index struct {
 	docTable      map[int]Document

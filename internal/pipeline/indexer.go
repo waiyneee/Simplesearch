@@ -3,9 +3,14 @@ package pipeline
 import (
 	"log"
 
-	"github.com/waiyneee/Simplesearch/internal/crawler"
 	"github.com/waiyneee/Simplesearch/internal/index"
 )
+
+type PageToIndex struct {
+	URL   string
+	Title string
+	Body  string
+}
 
 type IndexingOutcome struct {
 	DocID int
@@ -13,9 +18,9 @@ type IndexingOutcome struct {
 	Err   error
 }
 
-// IndexPage connects crawler output to index ingestion.
-func IndexPage(idx *index.Index, page crawler.PageResult) IndexingOutcome {
-	docID, added, err := idx.AddDocument(page.URL, page.Title, page.BodyText)
+// IndexPage indexes one normalized page payload.
+func IndexPage(idx *index.Index, page PageToIndex) IndexingOutcome {
+	docID, added, err := idx.AddDocument(page.URL, page.Title, page.Body)
 	if err != nil {
 		log.Printf("index error url=%s err=%v", page.URL, err)
 		return IndexingOutcome{DocID: 0, Added: false, Err: err}

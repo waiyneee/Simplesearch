@@ -14,7 +14,6 @@ func NormalizeText(text string) string {
 	for _, r := range text {
 		if unicode.IsLetter(r) || unicode.IsNumber(r) {
 
-			
 			cleaned = append(cleaned, r)
 		} else {
 			// Replace punctuation/symbols with space

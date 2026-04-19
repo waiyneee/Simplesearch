@@ -5,9 +5,6 @@ import (
 	"strings"
 )
 
-
-
-
 // New initializes all maps/counters to avoid nil-map panics.
 func New() *Index {
 	return &Index{
@@ -65,7 +62,7 @@ func (idx *Index) AddDocument(url, title, body string) (docID int, isAdded bool,
 	idx.docLen[docID] = len(tokens)
 
 	// Update inverted index and DF
-	idx.applyPostings(docID,tfMap)
+	idx.applyPostings(docID, tfMap)
 
 	// Update corpus stats
 	idx.totalDocs++
