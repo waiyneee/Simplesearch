@@ -25,6 +25,8 @@ type PageResult struct {
 	StatusCode int
 	Bytes      int64
 	Links      []string
+	Title      string
+	BodyText   string
 	Err        error
 }
 
@@ -108,14 +110,26 @@ func Run(ctx context.Context, cfg Config) (CrawlStats, error) {
 				continue
 			}
 
-			links, eerr := ExtractLinks(body, base)
+			links, lerr := ExtractLinks(body, base)
+			title, bodyText, cerr := ExtractPageContent(body)
+
+			var combinedErr error
+			if lerr != nil {
+				combinedErr = lerr
+			}
+			if cerr != nil && combinedErr == nil {
+				combinedErr = cerr
+			}
+
 			results <- PageResult{
 				URL:        j.URL,
 				Depth:      j.Depth,
 				StatusCode: status,
 				Bytes:      int64(len(body)),
 				Links:      links,
-				Err:        eerr,
+				Title:      title,
+				BodyText:   bodyText,
+				Err:        combinedErr,
 			}
 		}
 	}
@@ -183,9 +197,9 @@ func Run(ctx context.Context, cfg Config) (CrawlStats, error) {
 				stats.Successful++
 				stats.TotalBytes += res.Bytes
 
-				log.Printf("ok scheduled=%d success=%d failed=%d depth=%d status=%d bytes=%d url=%s links=%d",
+				log.Printf("ok scheduled=%d success=%d failed=%d depth=%d status=%d bytes=%d url=%s links=%d title=%q body_chars=%d",
 					stats.Scheduled, stats.Successful, stats.Failed,
-					res.Depth, res.StatusCode, res.Bytes, res.URL, len(res.Links))
+					res.Depth, res.StatusCode, res.Bytes, res.URL, len(res.Links), res.Title, len(res.BodyText))
 
 				if res.Depth < cfg.MaxDepthInclusive {
 					nextDepth := res.Depth + 1

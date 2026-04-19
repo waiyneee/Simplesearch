@@ -1,9 +1,9 @@
 package index
 
-type Posting struct{
-	DocID int
-	TF int //tf==term frequency ::frequency of a term in single document 
-}
+// type Posting struct{
+// 	DocID int
+// 	TF int //tf==term frequency ::frequency of a term in single document 
+// }
 
 func buildTermFreq(tokens []string) map[string]int{
 

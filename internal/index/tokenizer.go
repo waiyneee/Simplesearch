@@ -31,5 +31,15 @@ func Tokenize(text string) []string {
 	if cleaned == "" {
 		return []string{}
 	}
-	return strings.Fields(cleaned)
+	rawTokens := strings.Fields(cleaned)
+	out := make([]string, 0, len(rawTokens))
+
+	for _, tok := range rawTokens {
+		stemmed := Stem(tok)
+		if stemmed != "" {
+			out = append(out, stemmed)
+		}
+	}
+
+	return out
 }
