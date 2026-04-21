@@ -25,7 +25,7 @@ func idf(df int,N int) float64{
 	if df <= 0 || N <= 0 {
 		return 0
 	}
-	return math.Log(1.0+(float64(N-df)+0.5)/float64(df)+0.5)
+	return math.Log(1.0 + (float64(N-df)+0.5)/(float64(df)+0.5))
 
 }
 
@@ -52,10 +52,35 @@ func NewBM25(idx *index.Index) *BM25Engine {
 	return bm25
 }
 
-
 func (bm *BM25Engine) ScoreDoc(queryTerms []string, docID int) float64 {
-	
-	return 0
-}
+	if bm == nil || bm.idx == nil || len(queryTerms) == 0 || docID <= 0 {
+		return 0.0
+	}
 
+	score := 0.0
+
+	N := bm.idx.DocCount()
+	avgDl := bm.idx.AvgDocLength()
+	dl := bm.idx.DocLength(docID)
+
+	if N <= 0 || avgDl <= 0 || dl <= 0 {
+		return 0.0
+	}
+
+	for _, term := range queryTerms {
+		df := bm.idx.DocumentFrequency(term)
+		if df <= 0 {
+			continue
+		}
+
+		tf := bm.idx.TermFrequency(term, docID)
+		if tf <= 0 {
+			continue
+		}
+
+		score += idf(df, N) * tfNormalized(tf, dl, avgDl, bm.k1, bm.b)
+	}
+
+	return score
+}
 

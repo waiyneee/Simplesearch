@@ -71,3 +71,44 @@ func (idx *Index) AddDocument(url, title, body string) (docID int, isAdded bool,
 
 	return docID, true, nil
 }
+
+
+// DocCount returns total number of indexed documents.
+func (idx *Index) DocCount() int {
+	return idx.totalDocs
+}
+
+// AvgDocLength returns average token length across indexed documents.
+func (idx *Index) AvgDocLength() float64 {
+	return idx.avgDocLen
+}
+
+// DocLength returns token length for a document ID.
+// Returns 0 if docID is not found.
+func (idx *Index) DocLength(docID int) int {
+	return idx.docLen[docID]
+}
+
+// DocumentFrequency returns in how many docs this term appears.
+func (idx *Index) DocumentFrequency(term string) int {
+	term = strings.TrimSpace(term)
+	if term == "" {
+		return 0
+	}
+	return idx.docFreq[term]
+}
+
+// TermFrequency returns frequency of term inside a specific document.
+// Returns 0 if term/doc not found.
+func (idx *Index) TermFrequency(term string, docID int) int {
+	term = strings.TrimSpace(term)
+	if term == "" || docID <= 0 {
+		return 0
+	}
+
+	postings, ok := idx.invertedIndex[term]
+	if !ok {
+		return 0
+	}
+	return postings[docID]
+}
