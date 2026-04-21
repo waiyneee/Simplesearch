@@ -72,7 +72,6 @@ func (idx *Index) AddDocument(url, title, body string) (docID int, isAdded bool,
 	return docID, true, nil
 }
 
-
 // DocCount returns total number of indexed documents.
 func (idx *Index) DocCount() int {
 	return idx.totalDocs
