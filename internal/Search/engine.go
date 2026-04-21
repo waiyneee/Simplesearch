@@ -2,9 +2,8 @@ package search
 
 import (
 	"github.com/waiyneee/Simplesearch/internal/index"
+	
 	"github.com/waiyneee/Simplesearch/internal/ranking"
-
-	"fmt"
 )
 
 type Engine struct {
@@ -13,65 +12,46 @@ type Engine struct {
 }
 
 func NewEngine(idx *index.Index) *Engine {
-	//constructor for engine struct
 	if idx == nil {
+		return nil
+	}
+
+	sc := ranking.NewScorer(idx)
+	if sc == nil {
 		return nil
 	}
 
 	return &Engine{
 		idx:    idx,
-		scorer: ranking.NewScorer(idx),
+		scorer: sc,
 	}
-
 }
 
-func (e *Engine) retrieveCandidates(queryTerms []string) []int {
-
-	if e==nil || e.idx==nil || len(queryTerms)==0 {
-		return nil
+// Search executes: parse/validate -> candidate match -> rank.
+func (e *Engine) Search(rawQuery string, k int) ([]ranking.SearchResult, error) {
+	if e == nil || e.idx == nil || e.scorer == nil {
+		return nil, ErrEngineNotInit
+	}
+	if k <= 0 {
+		return nil, ErrInvalidTopK
 	}
 
-
-	seen:=make(map[int]struct{})
-
-	for _,term :=range queryTerms{
-		postings:=e.idx.Postings(term) //add term 
-		for docID:=range postings{
-			seen[docID]=struct{}{}
-		}
+	parsed, err := ParseAndValidateQuery(rawQuery)
+	if err != nil {
+		// For user-facing search UX, invalid/empty query is not a server fault.
+		// Return empty results + explicit error for caller decision.
+		return []ranking.SearchResult{}, err
 	}
 
-	candidates:=make([]int,0,len(seen))
-	for docID,_:=range seen{
-		candidates=append(candidates,docID)
+	candidates := e.retrieveCandidates(parsed.Terms)
+	if len(candidates) == 0 {
+		return []ranking.SearchResult{}, nil
 	}
 
-	return candidates
+	results := e.scorer.Score(parsed.Terms, candidates, k)
+	if len(results) == 0 {
+		return []ranking.SearchResult{}, nil
+	}
+
+	return results, nil
 }
-
-//major search query by public/users 
-func (e *Engine) Search(rawQuery string,k int) ([]ranking.SearchResult,error){
-	if e==nil|| e.idx==nil || e.scorer==nil {
-		return nil,fmt.Errorf("Search not initialized")
-
-	}
-
-	if k<=0{
-		return nil,fmt.Errorf("k must be >0")
-
-	}
-
-	terms:=index.Tokenize(rawQuery)
-	candidates:=e.retrieveCandidates(terms)
-	//now tokenier helps 
-
-	if len(terms)==0 || len(candidates)==0{
-		return []ranking.SearchResult{},nil
-
-	}
-	results:=e.scorer.Score(terms,candidates,k)
-
-	return results,nil
-
-}
-
