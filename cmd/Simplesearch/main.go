@@ -2,9 +2,13 @@ package main
 
 import (
 	"context"
+	"flag"
+	"fmt"
 	"log"
+	"os"
 	"time"
 
+	"github.com/waiyneee/Simplesearch/internal/app"
 	"github.com/waiyneee/Simplesearch/internal/crawler"
 	"github.com/waiyneee/Simplesearch/internal/index"
 	"github.com/waiyneee/Simplesearch/internal/pipeline"
@@ -22,6 +26,10 @@ const (
 )
 
 func main() {
+	query := flag.String("q", "", "search query")
+	topKvalue := flag.Int("k", 10, "number of results to return")
+	flag.Parse()
+
 	ctx, cancel := context.WithTimeout(context.Background(), runTimeout)
 	defer cancel()
 
@@ -82,4 +90,38 @@ func main() {
 		"index completed: indexed=%d duplicates=%d index_errs=%d pages_from_crawl=%d",
 		indexed, duplicates, indexErrs, len(pages),
 	)
+
+	// optional searching
+	if *query == "" {
+		log.Printf("no query provided. run with -q \"your query input\" to search docs")
+		return
+	}
+
+	application, err := app.New(idx)
+	if err != nil {
+		log.Fatalf("app initializer failed: %v", err)
+	}
+
+	resp, err := application.Run(app.SearchRequest{
+		Query: *query,
+		TopK:  *topKvalue,
+	})
+	if err != nil {
+		log.Fatalf("search failed: %v", err)
+	}
+
+	if len(resp.Results) == 0 {
+		fmt.Println("No results found")
+		return
+	}
+
+	fmt.Printf("\nTop %d results for query: %q\n\n", len(resp.Results), *query)
+	for i, r := range resp.Results {
+		fmt.Printf("%d) docID=%d score=%.6f\n", i+1, r.DocID, r.Score)
+	}
+
+	_ = os.Stdout.Sync()
+
+
+	
 }
