@@ -2,7 +2,6 @@ package search
 
 import "sort"
 
-
 // retrieveCandidates performs OR matching across terms and returns unique docIDs.
 func (e *Engine) retrieveCandidates(queryTerms []string) []int {
 	if e == nil || e.idx == nil || len(queryTerms) == 0 {

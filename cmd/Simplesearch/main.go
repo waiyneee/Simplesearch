@@ -122,6 +122,4 @@ func main() {
 
 	_ = os.Stdout.Sync()
 
-
-	
 }

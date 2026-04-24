@@ -2,7 +2,7 @@ package search
 
 import (
 	"github.com/waiyneee/Simplesearch/internal/index"
-	
+
 	"github.com/waiyneee/Simplesearch/internal/ranking"
 )
 

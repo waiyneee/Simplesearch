@@ -111,23 +111,18 @@ func (idx *Index) TermFrequency(term string, docID int) int {
 	}
 	return postings[docID]
 }
-func (idx *Index) Postings(term string) map[int]int{
-	term=strings.TrimSpace(term)
-	if term==""{
+func (idx *Index) Postings(term string) map[int]int {
+	term = strings.TrimSpace(term)
+	if term == "" {
 		return map[int]int{}
 		//empty
 	}
 
-	postings,ok:=idx.invertedIndex[term]
-	if !ok{
+	postings, ok := idx.invertedIndex[term]
+	if !ok {
 		return map[int]int{}
 	}
 
 	return postings
-
-
-
-
-
 
 }
