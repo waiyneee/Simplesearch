@@ -126,3 +126,12 @@ func (idx *Index) Postings(term string) map[int]int {
 	return postings
 
 }
+
+// GetDocument returns the document for docID.
+func (idx *Index) GetDocument(docID int) (Document, bool) {
+	if idx == nil || docID <= 0 {
+		return Document{}, false
+	}
+	doc, ok := idx.docTable[docID]
+	return doc, ok
+}

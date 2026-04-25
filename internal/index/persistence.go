@@ -20,7 +20,7 @@ var (
 	ErrInvalidSnapshotState       = errors.New("indexSnapshot's state is invalid")
 	ErrNegativeSnapshotStats      = errors.New("stats are awlays non-negative :error")
 	ErrInvalidSnapshotNextDocID   = errors.New("invalid docid doesnt exist")
-	ErrSnapshotNotFound = errors.New("snapshot file not found")
+	ErrSnapshotNotFound           = errors.New("snapshot file not found")
 
 	ErrEmptyPath = errors.New("path is empty")
 )

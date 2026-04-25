@@ -116,7 +116,11 @@ func main() {
 
 	fmt.Printf("\nTop %d results for query: %q\n\n", len(resp.Results), *query)
 	for i, r := range resp.Results {
-		fmt.Printf("%d) docID=%d score=%.6f\n", i+1, r.DocID, r.Score)
+		fmt.Printf("%d) %s\n", i+1, r.Title)
+		fmt.Printf("   URL: %s\n", r.URL)
+		fmt.Printf("   Score: %.6f\n", r.Score)
+		fmt.Printf("   %s\n\n", r.Snippet)
+
 	}
 
 	_ = os.Stdout.Sync()
