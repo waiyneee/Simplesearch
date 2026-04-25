@@ -20,6 +20,7 @@ var (
 	ErrInvalidSnapshotState       = errors.New("indexSnapshot's state is invalid")
 	ErrNegativeSnapshotStats      = errors.New("stats are awlays non-negative :error")
 	ErrInvalidSnapshotNextDocID   = errors.New("invalid docid doesnt exist")
+	ErrSnapshotNotFound = errors.New("snapshot file not found")
 
 	ErrEmptyPath = errors.New("path is empty")
 )
@@ -77,6 +78,10 @@ func (idx *Index) toSnapshot() (*indexSnapshot, error) {
 func fromSnapshot(s *indexSnapshot) (*Index, error) {
 	if s == nil {
 		return nil, ErrNilSnapshot
+	}
+
+	if s.Version != snapshotVersion {
+		return nil, ErrUnsupportedSnapshotVersion
 	}
 
 	if s.DocTable == nil ||
@@ -149,6 +154,9 @@ func Load(path string) (*Index, error) {
 
 	data, err := os.ReadFile(path)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, ErrSnapshotNotFound
+		}
 		return nil, fmt.Errorf("read snapshot file failed: %w", err)
 	}
 

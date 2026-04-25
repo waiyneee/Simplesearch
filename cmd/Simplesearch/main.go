@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -23,75 +24,73 @@ const (
 	workerCount       = 4
 	maxDepthInclusive = 3
 	userAgent         = "SimpleSearchBot/0.1 (+https://github.com/waiyneee/Simplesearch)"
+
+	snapshotPath = "data/index_snapshot.json"
 )
 
 func main() {
 	query := flag.String("q", "", "search query")
 	topKvalue := flag.Int("k", 10, "number of results to return")
+	reindex := flag.Bool("reindex", false, "force fresh crawl+index and overwrite snapshot")
 	flag.Parse()
 
 	ctx, cancel := context.WithTimeout(context.Background(), runTimeout)
 	defer cancel()
 
-	cfg := crawler.Config{
-		SeedURL:           seedURL,
-		MaxPages:          maxPages,
-		MaxTotalBytes:     maxTotalBytes,
-		MaxBytesPerPage:   maxBytesPerPage,
-		Workers:           workerCount,
-		UserAgent:         userAgent,
-		MaxDepthInclusive: maxDepthInclusive,
-	}
+	var idx *index.Index
+	var err error
 
-	crawlStats, pages, err := crawler.Run(ctx, cfg)
-	if err != nil {
-		log.Fatalf(
-			"crawl failed: err=%v scheduled=%d successful=%d failed=%d bytes=%d duration=%s",
-			err,
-			crawlStats.Scheduled,
-			crawlStats.Successful,
-			crawlStats.Failed,
-			crawlStats.TotalBytes,
-			crawlStats.FinishedAt.Sub(crawlStats.StartedAt),
-		)
-	}
+	// 1) Try loading snapshot unless reindex is forced.
+	if !*reindex {
+		idx, err = index.Load(snapshotPath)
+		switch {
+		case err == nil:
+			log.Printf("loaded index snapshot from %s", snapshotPath)
 
-	idx := index.New()
+		case errors.Is(err, index.ErrSnapshotNotFound):
+			log.Printf("snapshot not found at %s, running crawl+index", snapshotPath)
+			idx, err = crawlAndBuildIndex(ctx)
+			if err != nil {
+				log.Fatalf("crawl/index failed: %v", err)
+			}
+			if err := idx.Save(snapshotPath); err != nil {
+				log.Printf("warning: failed to save snapshot: %v", err)
+			} else {
+				log.Printf("saved index snapshot to %s", snapshotPath)
+			}
 
-	indexed, duplicates, indexErrs := 0, 0, 0
-	for _, p := range pages {
-		out := pipeline.IndexPage(idx, pipeline.PageToIndex{
-			URL:   p.URL,
-			Title: p.Title,
-			Body:  p.BodyText,
-		})
-
-		if out.Err != nil {
-			indexErrs++
-			continue
+		default:
+			// Corrupt/unsupported/etc: warn and fallback.
+			log.Printf("warning: failed to load snapshot (%v), running crawl+index fallback", err)
+			idx, err = crawlAndBuildIndex(ctx)
+			if err != nil {
+				log.Fatalf("crawl/index fallback failed: %v", err)
+			}
+			if err := idx.Save(snapshotPath); err != nil {
+				log.Printf("warning: failed to save snapshot after fallback: %v", err)
+			} else {
+				log.Printf("saved index snapshot to %s", snapshotPath)
+			}
 		}
-		if out.Added {
-			indexed++
+	} else {
+		// Forced reindex path
+		log.Printf("reindex=true, skipping snapshot load and running fresh crawl+index")
+		idx, err = crawlAndBuildIndex(ctx)
+		if err != nil {
+			log.Fatalf("crawl/index failed: %v", err)
+		}
+		if err := idx.Save(snapshotPath); err != nil {
+			log.Printf("warning: failed to save snapshot: %v", err)
 		} else {
-			duplicates++
+			log.Printf("saved index snapshot to %s", snapshotPath)
 		}
 	}
 
-	log.Printf(
-		"crawl completed: scheduled=%d successful=%d failed=%d bytes=%d duration=%s",
-		crawlStats.Scheduled,
-		crawlStats.Successful,
-		crawlStats.Failed,
-		crawlStats.TotalBytes,
-		crawlStats.FinishedAt.Sub(crawlStats.StartedAt),
-	)
+	if idx == nil {
+		log.Fatalf("index is nil after initialization")
+	}
 
-	log.Printf(
-		"index completed: indexed=%d duplicates=%d index_errs=%d pages_from_crawl=%d",
-		indexed, duplicates, indexErrs, len(pages),
-	)
-
-	// optional searching
+	// Optional searching
 	if *query == "" {
 		log.Printf("no query provided. run with -q \"your query input\" to search docs")
 		return
@@ -121,5 +120,65 @@ func main() {
 	}
 
 	_ = os.Stdout.Sync()
+}
 
+func crawlAndBuildIndex(ctx context.Context) (*index.Index, error) {
+	cfg := crawler.Config{
+		SeedURL:           seedURL,
+		MaxPages:          maxPages,
+		MaxTotalBytes:     maxTotalBytes,
+		MaxBytesPerPage:   maxBytesPerPage,
+		Workers:           workerCount,
+		UserAgent:         userAgent,
+		MaxDepthInclusive: maxDepthInclusive,
+	}
+
+	crawlStats, pages, err := crawler.Run(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"crawl failed: err=%v scheduled=%d successful=%d failed=%d bytes=%d duration=%s",
+			err,
+			crawlStats.Scheduled,
+			crawlStats.Successful,
+			crawlStats.Failed,
+			crawlStats.TotalBytes,
+			crawlStats.FinishedAt.Sub(crawlStats.StartedAt),
+		)
+	}
+
+	idx := index.New()
+
+	indexed, duplicates, indexErrs := 0, 0, 0
+	for _, p := range pages {
+		out := pipeline.IndexPage(idx, pipeline.PageToIndex{
+			URL:   p.URL,
+			Title: p.Title,
+			Body:  p.BodyText,
+		})
+		if out.Err != nil {
+			indexErrs++
+			continue
+		}
+		if out.Added {
+			indexed++
+		} else {
+			duplicates++
+		}
+	}
+
+	log.Printf(
+		"crawl completed: scheduled=%d successful=%d failed=%d bytes=%d duration=%s",
+		crawlStats.Scheduled,
+		crawlStats.Successful,
+		crawlStats.Failed,
+		crawlStats.TotalBytes,
+		crawlStats.FinishedAt.Sub(crawlStats.StartedAt),
+	)
+
+	log.Printf(
+		"index completed: indexed=%d duplicates=%d index_errs=%d pages_from_crawl=%d",
+		indexed, duplicates, indexErrs, len(pages),
+	)
+
+	return idx, nil
 }
