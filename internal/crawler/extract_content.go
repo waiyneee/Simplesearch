@@ -4,55 +4,81 @@ import (
 	"bytes"
 	"strings"
 
-	"golang.org/x/net/html"
+	"github.com/PuerkitoBio/goquery"
 )
 
-// ExtractPageContent extracts <title> and visible text from HTML.
-// It skips script/style/noscript text and collapses whitespace.
+// ExtractPageContent extracts <title> and cleaned article text from Wikipedia HTML.
+// It prefers the main article container and removes non-content blocks.
 func ExtractPageContent(body []byte) (title string, text string, err error) {
-	doc, err := html.Parse(bytes.NewReader(body))
+	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(body))
 	if err != nil {
 		return "", "", err
 	}
 
-	var parts []string
-	parts = make([]string, 0, 256)
+	// Title
+	title = strings.TrimSpace(doc.Find("title").First().Text())
+	title = strings.Join(strings.Fields(title), " ")
 
-	var walk func(*html.Node, bool)
-	walk = func(n *html.Node, skip bool) {
-		if n == nil {
-			return
-		}
-
-		// Skip non-content nodes
-		if n.Type == html.ElementNode {
-			switch n.Data {
-			case "script", "style", "noscript":
-				skip = true
-			case "title":
-				if n.FirstChild != nil && n.FirstChild.Type == html.TextNode {
-					title = strings.TrimSpace(n.FirstChild.Data)
-				}
-			}
-		}
-
-		if !skip && n.Type == html.TextNode {
-			s := strings.TrimSpace(n.Data)
-			if s != "" {
-				parts = append(parts, s)
-			}
-		}
-
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			walk(c, skip)
+	// 1) Select article root (fallback chain)
+	var root *goquery.Selection
+	for _, sel := range []string{
+		"#mw-content-text .mw-parser-output",
+		"#mw-content-text",
+		"main",
+		"body",
+	} {
+		s := doc.Find(sel).First()
+		if s.Length() > 0 {
+			root = s
+			break
 		}
 	}
+	if root == nil || root.Length() == 0 {
+		return title, "", nil
+	}
 
-	walk(doc, false)
+	// 2) Remove noisy blocks (DOM-level)
+	root.Find(strings.Join([]string{
+		"style", "script", "noscript",
+		"table.infobox", "table.navbox", "table.vertical-navbox", "table.metadata",
+		".reflist", ".references", ".mw-references-wrap", "sup.reference",
+		"#toc", ".toc",
+		".mw-editsection", ".hatnote",
+		".navbox", ".sidebar", ".thumbcaption",
+	}, ",")).Each(func(i int, s *goquery.Selection) {
+		s.Remove()
+	})
 
-	text = strings.Join(parts, " ")
-	text = strings.Join(strings.Fields(text), " ")
-	title = strings.Join(strings.Fields(strings.TrimSpace(title)), " ")
+	// 3) Extract paragraphs (clean text blocks)
+	parts := make([]string, 0, 64)
+	root.Find("p").Each(func(i int, s *goquery.Selection) {
+		t := cleanText(s.Text())
+		if t == "" {
+			return
+		}
+		// skip tiny fragments
+		if len([]rune(t)) < 40 {
+			return
+		}
+		parts = append(parts, t)
+	})
 
-	return title, text, nil
+	// 4) Fallback if no paragraphs were found
+	if len(parts) == 0 {
+		t := cleanText(root.Text())
+		if t == "" {
+			return title, "", nil
+		}
+		return title, t, nil
+	}
+
+	return title, strings.Join(parts, "\n\n"), nil
+}
+
+func cleanText(in string) string {
+	in = strings.TrimSpace(in)
+	if in == "" {
+		return ""
+	}
+	return strings.Join(strings.Fields(in), " ")
 }
