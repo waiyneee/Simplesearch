@@ -11,6 +11,7 @@ import (
 
 	"github.com/waiyneee/Simplesearch/internal/app"
 	"github.com/waiyneee/Simplesearch/internal/crawler"
+	"github.com/waiyneee/Simplesearch/internal/format"
 	"github.com/waiyneee/Simplesearch/internal/index"
 	"github.com/waiyneee/Simplesearch/internal/pipeline"
 )
@@ -32,6 +33,8 @@ func main() {
 	query := flag.String("q", "", "search query")
 	topKvalue := flag.Int("k", 10, "number of results to return")
 	reindex := flag.Bool("reindex", false, "force fresh crawl+index and overwrite snapshot")
+	bodyLines := flag.Int("body-lines", 8, "max lines of snippet to show per result")
+	wrapWidth := flag.Int("wrap", 110, "wrap width for snippet output")
 	flag.Parse()
 
 	ctx, cancel := context.WithTimeout(context.Background(), runTimeout)
@@ -119,7 +122,13 @@ func main() {
 		fmt.Printf("%d) %s\n", i+1, r.Title)
 		fmt.Printf("   URL: %s\n", r.URL)
 		fmt.Printf("   Score: %.6f\n", r.Score)
-		fmt.Printf("   %s\n\n", r.Snippet)
+		// fmt.Printf("   %s\n\n", r.Snippet)
+
+		snippet := r.Snippet
+		snippet = format.WrapText(snippet, *wrapWidth)
+		snippet = format.TruncateLines(snippet, *bodyLines)
+
+		fmt.Printf("   %s\n\n", snippet)
 
 	}
 
