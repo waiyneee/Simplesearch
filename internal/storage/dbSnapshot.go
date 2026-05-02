@@ -22,7 +22,6 @@ func SaveIndex(db *sql.DB, idx *index.Index) error {
 		}
 	}()
 
-	
 	if _, err = tx.Exec(`DELETE FROM terms`); err != nil {
 		return err
 	}
@@ -78,9 +77,6 @@ VALUES (1, ?, ?, ?)
 
 	return tx.Commit()
 }
-
-
-
 
 func LoadIndex(db *sql.DB) (*index.Index, error) {
 	if db == nil {

@@ -13,8 +13,8 @@ import (
 	"github.com/waiyneee/Simplesearch/internal/format"
 	"github.com/waiyneee/Simplesearch/internal/index"
 	"github.com/waiyneee/Simplesearch/internal/pipeline"
-	"github.com/waiyneee/Simplesearch/internal/storage"
 	"github.com/waiyneee/Simplesearch/internal/seed"
+	"github.com/waiyneee/Simplesearch/internal/storage"
 )
 
 const (
