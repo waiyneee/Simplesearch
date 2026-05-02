@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/url"
 	"sync"
 	"time"
@@ -17,6 +18,22 @@ type Config struct {
 	Workers           int
 	UserAgent         string
 	MaxDepthInclusive int
+}
+
+var userAgents = []string{
+	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+	"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+	"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
+}
+
+// pickUserAgent rotates user agents per request.
+// Falls back to cfg.UserAgent when list is empty.
+func pickUserAgent(rng *rand.Rand, fallback string) string {
+	if len(userAgents) == 0 {
+		return fallback
+	}
+	return userAgents[rng.Intn(len(userAgents))]
 }
 
 type PageResult struct {
@@ -88,8 +105,14 @@ func Run(ctx context.Context, cfg Config) (CrawlStats, []PageResult, error) {
 	var wg sync.WaitGroup
 	worker := func() {
 		defer wg.Done()
+
+		// Each worker gets its own RNG (concurrency-safe).
+		rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+
 		for j := range jobs {
-			body, status, ferr := Fetch(ctx, j.URL, cfg.UserAgent, cfg.MaxBytesPerPage)
+			ua := pickUserAgent(rng, cfg.UserAgent)
+
+			body, status, ferr := Fetch(ctx, j.URL, ua, cfg.MaxBytesPerPage)
 			if ferr != nil {
 				results <- PageResult{URL: j.URL, Depth: j.Depth, Err: ferr}
 				continue

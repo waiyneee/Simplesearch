@@ -1,7 +1,6 @@
 package index
 
-
-//db helpers
+// db helpers
 func (idx *Index) DocTable() map[int]Document {
 	return idx.docTable
 }

@@ -15,7 +15,7 @@ const apiURL = "https://en.wikipedia.org/w/api.php"
 type openSearchResp []any
 
 // ResolveWikipediaSeed returns the top Wikipedia URL for a query.
-//only the top url results 
+// only the top url results
 func ResolveWikipediaSeed(query string) (string, error) {
 	if query == "" {
 		return "", fmt.Errorf("query is empty")
