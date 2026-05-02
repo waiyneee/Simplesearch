@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -14,6 +13,7 @@ import (
 	"github.com/waiyneee/Simplesearch/internal/format"
 	"github.com/waiyneee/Simplesearch/internal/index"
 	"github.com/waiyneee/Simplesearch/internal/pipeline"
+	"github.com/waiyneee/Simplesearch/internal/storage"
 )
 
 const (
@@ -26,13 +26,13 @@ const (
 	maxDepthInclusive = 3
 	userAgent         = "SimpleSearchBot/0.1 (+https://github.com/waiyneee/Simplesearch)"
 
-	snapshotPath = "data/index_snapshot.json"
+	dbPath = "data/Simplesearch.db"
 )
 
 func main() {
 	query := flag.String("q", "", "search query")
 	topKvalue := flag.Int("k", 10, "number of results to return")
-	reindex := flag.Bool("reindex", false, "force fresh crawl+index and overwrite snapshot")
+	reindex := flag.Bool("reindex", false, "force fresh crawl+index and overwrite DB")
 	bodyLines := flag.Int("body-lines", 8, "max lines of snippet to show per result")
 	wrapWidth := flag.Int("wrap", 110, "wrap width for snippet output")
 	flag.Parse()
@@ -40,52 +40,33 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), runTimeout)
 	defer cancel()
 
+	db, err := storage.OpenDbInstance(dbPath)
+	if err != nil {
+		log.Fatalf("open db failed: %v", err)
+	}
+	defer db.Close()
+
+	if err := storage.CreateSchema(db); err != nil {
+		log.Fatalf("create schema failed: %v", err)
+	}
+
 	var idx *index.Index
-	var err error
 
-	// 1) Try loading snapshot unless reindex is forced.
 	if !*reindex {
-		idx, err = index.Load(snapshotPath)
-		switch {
-		case err == nil:
-			log.Printf("loaded index snapshot from %s", snapshotPath)
-
-		case errors.Is(err, index.ErrSnapshotNotFound):
-			log.Printf("snapshot not found at %s, running crawl+index", snapshotPath)
-			idx, err = crawlAndBuildIndex(ctx)
-			if err != nil {
-				log.Fatalf("crawl/index failed: %v", err)
-			}
-			if err := idx.Save(snapshotPath); err != nil {
-				log.Printf("warning: failed to save snapshot: %v", err)
-			} else {
-				log.Printf("saved index snapshot to %s", snapshotPath)
-			}
-
-		default:
-			// Corrupt/unsupported/etc: warn and fallback.
-			log.Printf("warning: failed to load snapshot (%v), running crawl+index fallback", err)
-			idx, err = crawlAndBuildIndex(ctx)
-			if err != nil {
-				log.Fatalf("crawl/index fallback failed: %v", err)
-			}
-			if err := idx.Save(snapshotPath); err != nil {
-				log.Printf("warning: failed to save snapshot after fallback: %v", err)
-			} else {
-				log.Printf("saved index snapshot to %s", snapshotPath)
-			}
+		idx, err = storage.LoadIndex(db)
+		if err != nil {
+			log.Printf("load index failed: %v", err)
 		}
-	} else {
-		// Forced reindex path
-		log.Printf("reindex=true, skipping snapshot load and running fresh crawl+index")
+	}
+
+	if *reindex || idx == nil || idx.DocCount() == 0 {
+		log.Printf("building fresh index...")
 		idx, err = crawlAndBuildIndex(ctx)
 		if err != nil {
 			log.Fatalf("crawl/index failed: %v", err)
 		}
-		if err := idx.Save(snapshotPath); err != nil {
-			log.Printf("warning: failed to save snapshot: %v", err)
-		} else {
-			log.Printf("saved index snapshot to %s", snapshotPath)
+		if err := storage.SaveIndex(db, idx); err != nil {
+			log.Fatalf("save index failed: %v", err)
 		}
 	}
 
@@ -93,15 +74,14 @@ func main() {
 		log.Fatalf("index is nil after initialization")
 	}
 
-	// Optional searching
 	if *query == "" {
-		log.Printf("no query provided. run with -q \"your query input\" to search docs")
+		log.Printf("no query provided. run with -q \"your query\" to search")
 		return
 	}
 
 	application, err := app.New(idx)
 	if err != nil {
-		log.Fatalf("app initializer failed: %v", err)
+		log.Fatalf("app init failed: %v", err)
 	}
 
 	resp, err := application.Run(app.SearchRequest{
@@ -122,14 +102,10 @@ func main() {
 		fmt.Printf("%d) %s\n", i+1, r.Title)
 		fmt.Printf("   URL: %s\n", r.URL)
 		fmt.Printf("   Score: %.6f\n", r.Score)
-		// fmt.Printf("   %s\n\n", r.Snippet)
 
-		snippet := r.Snippet
-		snippet = format.WrapText(snippet, *wrapWidth)
+		snippet := format.WrapText(r.Snippet, *wrapWidth)
 		snippet = format.TruncateLines(snippet, *bodyLines)
-
 		fmt.Printf("   %s\n\n", snippet)
-
 	}
 
 	_ = os.Stdout.Sync()

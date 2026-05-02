@@ -6,9 +6,10 @@ func CreateSchema(db *sql.DB) error {
 	query := `
 CREATE TABLE IF NOT EXISTS documents (
   id INTEGER PRIMARY KEY,
-  url TEXT UNIQUE,
+  url TEXT UNIQUE NOT NULL,
   title TEXT,
   body TEXT,
+  length INTEGER NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -18,13 +19,19 @@ CREATE TABLE IF NOT EXISTS terms (
   doc_id INTEGER NOT NULL,
   freq INTEGER NOT NULL,
   PRIMARY KEY (term, doc_id),
-  FOREIGN KEY (doc_id) REFERENCES documents(id)
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  FOREIGN KEY (doc_id) REFERENCES documents(id) ON DELETE CASCADE
+);
+
+
+CREATE TABLE IF NOT EXISTS stats (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  total_docs INTEGER NOT NULL,
+  total_doc_len INTEGER NOT NULL,
+  next_doc_id INTEGER NOT NULL
 );
 
 
 CREATE INDEX IF NOT EXISTS idx_terms_term ON terms(term);
-
 
 CREATE INDEX IF NOT EXISTS idx_terms_doc ON terms(doc_id);
 `
