@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	// "log"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	_ "modernc.org/sqlite"
 )
@@ -20,6 +22,13 @@ func OpenDbInstance(path string) (*sql.DB, error) {
 	if path == "" {
 		return nil, fmt.Errorf("db path is empty")
 	}
+	dir := filepath.Dir(path)
+	if dir != "." && dir != "" {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return nil, fmt.Errorf("create db dir failed: %w", err)
+		}
+	}
+
 
 	db, err := sql.Open("sqlite", path)
 	if err != nil {

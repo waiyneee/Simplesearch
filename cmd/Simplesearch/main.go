@@ -14,11 +14,12 @@ import (
 	"github.com/waiyneee/Simplesearch/internal/index"
 	"github.com/waiyneee/Simplesearch/internal/pipeline"
 	"github.com/waiyneee/Simplesearch/internal/storage"
+	"github.com/waiyneee/Simplesearch/internal/seed"
 )
 
 const (
 	runTimeout        = 2 * time.Minute
-	seedURL           = "https://en.wikipedia.org/wiki/Cristiano_Ronaldo"
+	defaultSeedURL    = "https://en.wikipedia.org/wiki/Cristiano_Ronaldo" //as a fallback
 	maxPages          = 50
 	maxTotalBytes     = 5 * 1024 * 1024 // 5 MB
 	maxBytesPerPage   = 512 * 1024      // 512 KB
@@ -52,6 +53,7 @@ func main() {
 
 	var idx *index.Index
 
+	// Try to load existing index unless user forces reindex.
 	if !*reindex {
 		idx, err = storage.LoadIndex(db)
 		if err != nil {
@@ -59,9 +61,25 @@ func main() {
 		}
 	}
 
+	// If no index (or forced reindex), build from query seed first.
 	if *reindex || idx == nil || idx.DocCount() == 0 {
-		log.Printf("building fresh index...")
-		idx, err = crawlAndBuildIndex(ctx)
+		var seedURL string
+
+		// Prefer query-based seed when query is provided.
+		if *query != "" {
+			seedURL, err = seed.ResolveWikipediaSeed(*query)
+			if err != nil {
+				log.Printf("query seed failed, using default seed: %v", err)
+				seedURL = defaultSeedURL
+			}
+		} else {
+			// No query provided → use fallback seed.
+			seedURL = defaultSeedURL
+		}
+
+		log.Printf("building fresh index from seed: %s", seedURL)
+
+		idx, err = crawlAndBuildIndex(ctx, seedURL)
 		if err != nil {
 			log.Fatalf("crawl/index failed: %v", err)
 		}
@@ -92,6 +110,37 @@ func main() {
 		log.Fatalf("search failed: %v", err)
 	}
 
+	// If still no results, rebuild using query seed and try again.
+	if len(resp.Results) == 0 {
+		seedURL, err := seed.ResolveWikipediaSeed(*query)
+		if err != nil {
+			log.Fatalf("no results + failed to resolve seed: %v", err)
+		}
+
+		log.Printf("no results. crawling new seed: %s", seedURL)
+
+		idx, err = crawlAndBuildIndex(ctx, seedURL)
+		if err != nil {
+			log.Fatalf("crawl/index failed: %v", err)
+		}
+		if err := storage.SaveIndex(db, idx); err != nil {
+			log.Fatalf("save index failed: %v", err)
+		}
+
+		application, err = app.New(idx)
+		if err != nil {
+			log.Fatalf("app init failed after rebuild: %v", err)
+		}
+
+		resp, err = application.Run(app.SearchRequest{
+			Query: *query,
+			TopK:  *topKvalue,
+		})
+		if err != nil {
+			log.Fatalf("search failed after rebuild: %v", err)
+		}
+	}
+
 	if len(resp.Results) == 0 {
 		fmt.Println("No results found")
 		return
@@ -111,7 +160,7 @@ func main() {
 	_ = os.Stdout.Sync()
 }
 
-func crawlAndBuildIndex(ctx context.Context) (*index.Index, error) {
+func crawlAndBuildIndex(ctx context.Context, seedURL string) (*index.Index, error) {
 	cfg := crawler.Config{
 		SeedURL:           seedURL,
 		MaxPages:          maxPages,
