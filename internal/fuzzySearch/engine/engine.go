@@ -11,5 +11,3 @@ type Engine interface {
 	BestCorrection(query string) (string, bool)
 	AddWord(word string)
 }
-
-
