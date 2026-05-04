@@ -14,8 +14,8 @@ const apiURL = "https://en.wikipedia.org/w/api.php"
 
 type openSearchResp []any
 
-// ResolveWikipediaSeed returns the top Wikipedia URL for a query.
-// only the top url results
+// ResolveWikipediaSeed returns the best Wikipedia URL for a query,
+// using title-boost scoring (exact > prefix > substring).
 func ResolveWikipediaSeed(query string) (string, error) {
 	if query == "" {
 		return "", fmt.Errorf("query is empty")
@@ -25,7 +25,7 @@ func ResolveWikipediaSeed(query string) (string, error) {
 	q := u.Query()
 	q.Set("action", "opensearch")
 	q.Set("search", query)
-	q.Set("limit", "1")
+	q.Set("limit", "10")
 	q.Set("namespace", "0")
 	q.Set("format", "json")
 	q.Set("origin", "*")
@@ -58,15 +58,64 @@ func ResolveWikipediaSeed(query string) (string, error) {
 		return "", fmt.Errorf("unexpected response")
 	}
 
+	titles, ok := data[1].([]any)
+	if !ok || len(titles) == 0 {
+		return "", fmt.Errorf("no titles")
+	}
+
 	urls, ok := data[3].([]any)
 	if !ok || len(urls) == 0 {
 		return "", fmt.Errorf("no results")
 	}
 
-	topURL, ok := urls[0].(string)
-	if !ok || topURL == "" {
+	// Choose best URL via title-boost scoring.
+	queryNorm := normalize(query)
+	bestScore := -1
+	bestRank := 1<<30
+	bestURL := ""
+
+	for i := 0; i < len(urls); i++ {
+		if i >= len(titles) {
+			break
+		}
+		title, ok1 := titles[i].(string)
+		link, ok2 := urls[i].(string)
+		if !ok1 || !ok2 || link == "" {
+			continue
+		}
+
+		score := scoreTitle(queryNorm, normalize(title))
+
+		// Higher score wins; tie-breaker is original rank (lower index).
+		if score > bestScore || (score == bestScore && i < bestRank) {
+			bestScore = score
+			bestRank = i
+			bestURL = link
+		}
+	}
+
+	if bestURL == "" {
 		return "", fmt.Errorf("no valid url")
 	}
 
-	return topURL, nil
+	return bestURL, nil
+}
+
+func normalize(s string) string {
+	s = strings.TrimSpace(strings.ToLower(s))
+	s = strings.ReplaceAll(s, "_", " ")
+	return s
+}
+
+func scoreTitle(query, title string) int {
+	switch {
+	case title == query:
+		return 100 // exact match boost
+	case strings.HasPrefix(title, query):
+		return 75 // prefix match boost
+	case strings.Contains(title, query):
+		return 50 // substring match boost
+	default:
+		return 0
+	}
 }
