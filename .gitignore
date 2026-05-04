@@ -2,4 +2,5 @@ data/index_snapshot.json
 # or broader:
 data/*.json
 
-.env
+.envdata/Simplesearch.db
+data/Simplesearch.db
