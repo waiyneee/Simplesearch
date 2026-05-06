@@ -1,8 +1,10 @@
 package ranking
 
 import (
-	"github.com/waiyneee/Simplesearch/internal/index"
 	"sort"
+	"strings"
+
+	"github.com/waiyneee/Simplesearch/internal/index"
 )
 
 type SearchResult struct {
@@ -34,21 +36,26 @@ func (s *Scorer) Score(queryTerms []string, candidateDocIDs []int, k int) []Sear
 
 	results := make([]SearchResult, 0, len(candidateDocIDs))
 
+	queryNorm := normalizeTitle(strings.Join(queryTerms, " "))
+
 	for _, docID := range candidateDocIDs {
 		score := s.bm25.ScoreDoc(queryTerms, docID)
 		if score <= 0 {
 			continue
 		}
 
+		if doc, ok := s.idx.GetDocument(docID); ok {
+			boost := titleBoost(queryNorm, normalizeTitle(doc.Title))
+			score *= boost
+		}
+
 		results = append(results, SearchResult{
 			DocID: docID,
 			Score: score,
 		})
-
 	}
 
-	//sorting in the desc order
-	//we can use nnonymous fn here no helper
+	// sorting in desc order
 	sort.Slice(results, func(i, j int) bool {
 		if results[i].Score == results[j].Score {
 			return results[i].DocID < results[j].DocID
@@ -56,11 +63,32 @@ func (s *Scorer) Score(queryTerms []string, candidateDocIDs []int, k int) []Sear
 		return results[i].Score > results[j].Score
 	})
 
-	//top k results only
+	// top k results only
 	if len(results) > k {
 		results = results[:k]
 	}
 
 	return results
+}
 
+func normalizeTitle(s string) string {
+	s = strings.TrimSpace(strings.ToLower(s))
+	s = strings.ReplaceAll(s, "_", " ")
+	return s
+}
+
+// exact > prefix > substring
+func titleBoost(query, title string) float64 {
+	switch {
+	case query == "" || title == "":
+		return 1.0
+	case title == query:
+		return 1.75
+	case strings.HasPrefix(title, query):
+		return 1.35
+	case strings.Contains(title, query):
+		return 1.15
+	default:
+		return 1.0
+	}
 }

@@ -4,14 +4,17 @@ import (
 	"github.com/waiyneee/Simplesearch/internal/index"
 
 	"github.com/waiyneee/Simplesearch/internal/ranking"
+
+	"github.com/waiyneee/Simplesearch/internal/suggest"
 )
 
 type Engine struct {
 	idx    *index.Index
 	scorer *ranking.Scorer
+	corrector *suggest.Corrector
 }
 
-func NewEngine(idx *index.Index) *Engine {
+func NewEngine(idx *index.Index,corrector *suggest.Corrector) *Engine {
 	if idx == nil {
 		return nil
 	}
@@ -34,6 +37,14 @@ func (e *Engine) Search(rawQuery string, k int) ([]ranking.SearchResult, error) 
 	}
 	if k <= 0 {
 		return nil, ErrInvalidTopK
+	}
+
+
+    if e.corrector != nil {
+		if corrected, source := e.corrector.Correct(rawQuery);
+		 source != "none" && corrected != "" {
+			rawQuery = corrected
+		}
 	}
 
 	parsed, err := ParseAndValidateQuery(rawQuery)

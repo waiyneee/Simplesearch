@@ -36,6 +36,11 @@ func main() {
 	reindex := flag.Bool("reindex", false, "force fresh crawl+index and overwrite DB")
 	bodyLines := flag.Int("body-lines", 8, "max lines of snippet to show per result")
 	wrapWidth := flag.Int("wrap", 110, "wrap width for snippet output")
+
+	// NEW FLAGS FOR REDIS WILL RUN ON CLI LOCALLY 
+	cacheMode := flag.String("cache", "memory", "cache mode: memory|redis")
+	redisURLFlag := flag.String("redis-url", "", "redis connection URL (overrides REDIS_URL)")
+
 	flag.Parse()
 
 	ctx, cancel := context.WithTimeout(context.Background(), runTimeout)
@@ -97,7 +102,14 @@ func main() {
 		return
 	}
 
-	application, err := app.New(idx)
+	// resolve redis URL from env + flag
+	redisURL := resolveRedisURL(*redisURLFlag)
+
+	// NOTE: update app.New signature to accept this config.
+	application, err := app.New(idx, app.Config{
+		CacheMode: *cacheMode,
+		RedisURL:  redisURL,
+	})
 	if err != nil {
 		log.Fatalf("app init failed: %v", err)
 	}
@@ -127,7 +139,10 @@ func main() {
 			log.Fatalf("save index failed: %v", err)
 		}
 
-		application, err = app.New(idx)
+		application, err = app.New(idx, app.Config{
+			CacheMode: *cacheMode,
+			RedisURL:  redisURL,
+		})
 		if err != nil {
 			log.Fatalf("app init failed after rebuild: %v", err)
 		}
@@ -158,6 +173,19 @@ func main() {
 	}
 
 	_ = os.Stdout.Sync()
+}
+
+func resolveRedisURL(flagValue string) string {
+	// Priority: flag > env > default
+	if flagValue != "" {
+		return flagValue
+	}
+	if env, ok := os.LookupEnv("REDIS_URL"); ok && env != "" {
+		return env
+	}
+
+	//last fallback:hopeso we dont go there
+	return "redis://localhost:6381"
 }
 
 func crawlAndBuildIndex(ctx context.Context, seedURL string) (*index.Index, error) {

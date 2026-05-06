@@ -1,13 +1,102 @@
 package engine
 
-type Suggestion struct {
-	Word     string
-	Distance int
-	Score    float64
+import (
+	"strings"
+
+	"github.com/waiyneee/Simplesearch/internal/fuzzySearch/bktree"
+	"github.com/waiyneee/Simplesearch/internal/fuzzySearch/levenshtein"
+	"github.com/waiyneee/Simplesearch/internal/fuzzySearch/trigram"
+)
+
+type EngineImpl struct {
+	tree       *bktree.Tree
+	trigrams   *trigram.Index
+	words      map[string]struct{}
+	maxDist    int
+	limit      int
+	minTrigram float64
 }
 
-type Engine interface {
-	Suggest(query string, limit int) []Suggestion
-	BestCorrection(query string) (string, bool)
-	AddWord(word string)
+func New(words []string) *EngineImpl {
+	e := &EngineImpl{
+		tree:       bktree.New(),
+		trigrams:   trigram.New(),
+		words:      map[string]struct{}{},
+		maxDist:    2,
+		limit:      5,
+		minTrigram: 0.3,
+	}
+	e.Build(words)
+	return e
+}
+
+func (e *EngineImpl) Build(words []string) {
+	e.tree.Build(nil)
+	e.trigrams.Build(nil)
+	e.words = map[string]struct{}{}
+
+	for _, w := range words {
+		e.AddWord(w)
+	}
+}
+
+func (e *EngineImpl) AddWord(word string) {
+	w := normalize(word)
+	if w == "" {
+		return
+	}
+	if _, ok := e.words[w]; ok {
+		return
+	}
+	e.words[w] = struct{}{}
+	e.tree.Add(w)
+	e.trigrams.Add(w)
+}
+
+func (e *EngineImpl) Suggest(query string, limit int) []Suggestion {
+	q := normalize(query)
+	if q == "" {
+		return nil
+	}
+
+	candidates := e.trigrams.Candidates(q)
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	if limit <= 0 {
+		limit = e.limit
+	}
+
+	// use BK-tree within maxDist, filtered by trigram candidates
+	results := e.tree.Search(q, e.maxDist, candidates, limit)
+
+	// fallback: if nothing found, try exact distance on candidates
+	if len(results) == 0 {
+		for _, cand := range candidates {
+			d := levenshtein.Compute(q, cand)
+			if d <= e.maxDist {
+				results = append(results, Suggestion{
+					Word:     cand,
+					Distance: d,
+					Score:    1.0 / float64(d+1),
+				})
+			}
+		}
+	}
+
+	return results
+}
+
+func (e *EngineImpl) BestCorrection(query string) (string, bool) {
+	results := e.Suggest(query, 1)
+	if len(results) == 0 {
+		return "", false
+	}
+	return results[0].Word, true
+}
+
+func normalize(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	return strings.Join(strings.Fields(s), " ")
 }
