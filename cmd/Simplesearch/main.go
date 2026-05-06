@@ -37,7 +37,7 @@ func main() {
 	bodyLines := flag.Int("body-lines", 8, "max lines of snippet to show per result")
 	wrapWidth := flag.Int("wrap", 110, "wrap width for snippet output")
 
-	// NEW FLAGS FOR REDIS WILL RUN ON CLI LOCALLY 
+	// NEW FLAGS FOR REDIS WILL RUN ON CLI LOCALLY
 	cacheMode := flag.String("cache", "memory", "cache mode: memory|redis")
 	redisURLFlag := flag.String("redis-url", "", "redis connection URL (overrides REDIS_URL)")
 

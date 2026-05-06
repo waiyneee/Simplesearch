@@ -14,7 +14,7 @@ type Cache interface {
 }
 
 // --------------------
-// Memory cache -->we dont want each and every lookup for redis 
+// Memory cache -->we dont want each and every lookup for redis
 // --------------------
 type MemoryCache struct {
 	store map[string]string

@@ -19,7 +19,7 @@ func Compute(a, b string) int {
 	dp := make([][]int, len(ar)+1)
 	for i := range dp {
 		dp[i] = make([]int, len(br)+1)
-	}//dp matrix 
+	} //dp matrix
 
 	for i := 0; i <= len(ar); i++ {
 		dp[i][0] = i

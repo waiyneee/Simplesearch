@@ -9,12 +9,12 @@ import (
 )
 
 type Engine struct {
-	idx    *index.Index
-	scorer *ranking.Scorer
+	idx       *index.Index
+	scorer    *ranking.Scorer
 	corrector *suggest.Corrector
 }
 
-func NewEngine(idx *index.Index,corrector *suggest.Corrector) *Engine {
+func NewEngine(idx *index.Index, corrector *suggest.Corrector) *Engine {
 	if idx == nil {
 		return nil
 	}
@@ -25,8 +25,9 @@ func NewEngine(idx *index.Index,corrector *suggest.Corrector) *Engine {
 	}
 
 	return &Engine{
-		idx:    idx,
-		scorer: sc,
+		idx:       idx,
+		scorer:    sc,
+		corrector: corrector,
 	}
 }
 
@@ -39,10 +40,8 @@ func (e *Engine) Search(rawQuery string, k int) ([]ranking.SearchResult, error) 
 		return nil, ErrInvalidTopK
 	}
 
-
-    if e.corrector != nil {
-		if corrected, source := e.corrector.Correct(rawQuery);
-		 source != "none" && corrected != "" {
+	if e.corrector != nil {
+		if corrected, source := e.corrector.Correct(rawQuery); source != "none" && corrected != "" {
 			rawQuery = corrected
 		}
 	}

@@ -71,7 +71,7 @@ func ResolveWikipediaSeed(query string) (string, error) {
 	// Choose best URL via title-boost scoring.
 	queryNorm := normalize(query)
 	bestScore := -1
-	bestRank := 1<<30
+	bestRank := 1 << 30
 	bestURL := ""
 
 	for i := 0; i < len(urls); i++ {

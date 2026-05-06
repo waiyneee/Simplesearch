@@ -6,6 +6,7 @@ import (
 	"github.com/waiyneee/Simplesearch/internal/fuzzySearch/bktree"
 	"github.com/waiyneee/Simplesearch/internal/fuzzySearch/levenshtein"
 	"github.com/waiyneee/Simplesearch/internal/fuzzySearch/trigram"
+	"github.com/waiyneee/Simplesearch/internal/fuzzySearch/types"
 )
 
 type EngineImpl struct {
@@ -53,7 +54,7 @@ func (e *EngineImpl) AddWord(word string) {
 	e.trigrams.Add(w)
 }
 
-func (e *EngineImpl) Suggest(query string, limit int) []Suggestion {
+func (e *EngineImpl) Suggest(query string, limit int) []types.Suggestion {
 	q := normalize(query)
 	if q == "" {
 		return nil
@@ -68,15 +69,13 @@ func (e *EngineImpl) Suggest(query string, limit int) []Suggestion {
 		limit = e.limit
 	}
 
-	// use BK-tree within maxDist, filtered by trigram candidates
 	results := e.tree.Search(q, e.maxDist, candidates, limit)
 
-	// fallback: if nothing found, try exact distance on candidates
 	if len(results) == 0 {
 		for _, cand := range candidates {
 			d := levenshtein.Compute(q, cand)
 			if d <= e.maxDist {
-				results = append(results, Suggestion{
+				results = append(results, types.Suggestion{
 					Word:     cand,
 					Distance: d,
 					Score:    1.0 / float64(d+1),

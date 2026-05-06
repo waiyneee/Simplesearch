@@ -9,10 +9,10 @@ type TrigramIndex interface {
 }
 
 type Index struct {
-	index map[string]map[string]struct{} //inverted index type 
+	index map[string]map[string]struct{} //inverted index type
 }
 
-func New() *Index {//constructor 
+func New() *Index { //constructor
 	return &Index{index: map[string]map[string]struct{}{}}
 }
 

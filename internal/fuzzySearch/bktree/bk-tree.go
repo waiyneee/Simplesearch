@@ -1,8 +1,8 @@
 package bktree
 
 import (
-    "github.com/waiyneee/Simplesearch/internal/fuzzySearch/engine"
 	"github.com/waiyneee/Simplesearch/internal/fuzzySearch/levenshtein"
+	"github.com/waiyneee/Simplesearch/internal/fuzzySearch/types"
 )
 
 type BKTree interface {
@@ -11,11 +11,10 @@ type BKTree interface {
 
 	Add(word string) //adds or inserts  single word
 
-	Search(query string, maxDistance int, candidates []string, limit int) []engine.Suggestion
+	Search(query string, maxDistance int, candidates []string, limit int) []types.Suggestion
 	// Search returns matches within maxDist, optionally filtered by candidates.
 
 }
-
 
 //simple tree structre usage in Go
 
@@ -39,7 +38,6 @@ func (t *Tree) Build(words []string) {
 		t.Add(w)
 	}
 }
-
 
 func (t *Tree) Add(word string) {
 	if t.Root == nil {
@@ -70,7 +68,7 @@ func (n *Node) addRecursive(word string) {
 
 // Search finds all words within maxDistance edits.
 // If candidates is provided, results are filtered to only those words.
-func (t *Tree) Search(query string, maxDistance int, candidates []string, limit int) []engine.Suggestion {
+func (t *Tree) Search(query string, maxDistance int, candidates []string, limit int) []types.Suggestion {
 	if t.Root == nil {
 		return nil
 	}
@@ -84,7 +82,7 @@ func (t *Tree) Search(query string, maxDistance int, candidates []string, limit 
 		}
 	}
 
-	results := []engine.Suggestion{}
+	results := []types.Suggestion{}
 
 	var searchNode func(n *Node) bool
 	searchNode = func(n *Node) bool {
@@ -95,7 +93,7 @@ func (t *Tree) Search(query string, maxDistance int, candidates []string, limit 
 		d := levenshtein.Compute(n.Word, query)
 		if d <= maxDistance {
 			if candidateSet == nil || has(candidateSet, n.Word) {
-				results = append(results, engine.Suggestion{
+				results = append(results, types.Suggestion{
 					Word:     n.Word,
 					Distance: d,
 					Score:    scoreFromDistance(d),
@@ -126,8 +124,8 @@ func (t *Tree) Search(query string, maxDistance int, candidates []string, limit 
 
 func scoreFromDistance(d int) float64 {
 	return 1.0 / float64(d+1)
-	//simple scoring will opimize 
-	//futher in future usecase 
+	//simple scoring will opimize
+	//futher in future usecase
 }
 
 func has(set map[string]struct{}, word string) bool {

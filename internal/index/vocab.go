@@ -15,5 +15,4 @@ func (idx *Index) Terms() []string {
 	return terms
 }
 
-
 //I need a vocabulary to work with my local+wikisuggetor as well.
