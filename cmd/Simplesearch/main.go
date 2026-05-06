@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
 	"log"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/waiyneee/Simplesearch/internal/app"
@@ -17,35 +20,25 @@ import (
 	"github.com/waiyneee/Simplesearch/internal/storage"
 )
 
-const (
-	runTimeout        = 2 * time.Minute
-	defaultSeedURL    = "https://en.wikipedia.org/wiki/Cristiano_Ronaldo" //as a fallback
-	maxPages          = 50
-	maxTotalBytes     = 5 * 1024 * 1024 // 5 MB
-	maxBytesPerPage   = 512 * 1024      // 512 KB
-	workerCount       = 4
-	maxDepthInclusive = 3
-	userAgent         = "SimpleSearchBot/0.1 (+https://github.com/waiyneee/Simplesearch)"
-
-	dbPath = "data/Simplesearch.db"
-)
-
 func main() {
+	loadEnv(".env")
+
 	query := flag.String("q", "", "search query")
 	topKvalue := flag.Int("k", 10, "number of results to return")
 	reindex := flag.Bool("reindex", false, "force fresh crawl+index and overwrite DB")
 	bodyLines := flag.Int("body-lines", 8, "max lines of snippet to show per result")
 	wrapWidth := flag.Int("wrap", 110, "wrap width for snippet output")
 
-	// NEW FLAGS FOR REDIS WILL RUN ON CLI LOCALLY
-	cacheMode := flag.String("cache", "memory", "cache mode: memory|redis")
-	redisURLFlag := flag.String("redis-url", "", "redis connection URL (overrides REDIS_URL)")
+	cacheMode := flag.String("cache", getEnv("CACHE_MODE", "memory"), "cache mode: memory|redis")
+	redisURLFlag := flag.String("redis-url", getEnv("REDIS_URL", ""), "redis connection URL (overrides REDIS_URL)")
 
 	flag.Parse()
 
+	runTimeout := getEnvAsDuration("RUN_TIMEOUT", 2*time.Minute)
 	ctx, cancel := context.WithTimeout(context.Background(), runTimeout)
 	defer cancel()
 
+	dbPath := getEnv("DB_PATH", "data/Simplesearch.db")
 	db, err := storage.OpenDbInstance(dbPath)
 	if err != nil {
 		log.Fatalf("open db failed: %v", err)
@@ -58,7 +51,6 @@ func main() {
 
 	var idx *index.Index
 
-	// Try to load existing index unless user forces reindex.
 	if !*reindex {
 		idx, err = storage.LoadIndex(db)
 		if err != nil {
@@ -66,11 +58,10 @@ func main() {
 		}
 	}
 
-	// If no index (or forced reindex), build from query seed first.
 	if *reindex || idx == nil || idx.DocCount() == 0 {
 		var seedURL string
+		defaultSeedURL := getEnv("DEFAULT_SEED_URL", "")
 
-		// Prefer query-based seed when query is provided.
 		if *query != "" {
 			seedURL, err = seed.ResolveWikipediaSeed(*query)
 			if err != nil {
@@ -78,7 +69,6 @@ func main() {
 				seedURL = defaultSeedURL
 			}
 		} else {
-			// No query provided → use fallback seed.
 			seedURL = defaultSeedURL
 		}
 
@@ -102,10 +92,8 @@ func main() {
 		return
 	}
 
-	// resolve redis URL from env + flag
 	redisURL := resolveRedisURL(*redisURLFlag)
 
-	// NOTE: update app.New signature to accept this config.
 	application, err := app.New(idx, app.Config{
 		CacheMode: *cacheMode,
 		RedisURL:  redisURL,
@@ -122,7 +110,6 @@ func main() {
 		log.Fatalf("search failed: %v", err)
 	}
 
-	// If still no results, rebuild using query seed and try again.
 	if len(resp.Results) == 0 {
 		seedURL, err := seed.ResolveWikipediaSeed(*query)
 		if err != nil {
@@ -176,24 +163,25 @@ func main() {
 }
 
 func resolveRedisURL(flagValue string) string {
-	// Priority: flag > env > default
 	if flagValue != "" {
 		return flagValue
 	}
-	if env, ok := os.LookupEnv("REDIS_URL"); ok && env != "" {
-		return env
-	}
-
-	//last fallback:hopeso we dont go there
-	return "redis://localhost:6381"
+	return getEnv("REDIS_URL", "")
 }
 
 func crawlAndBuildIndex(ctx context.Context, seedURL string) (*index.Index, error) {
+	maxPages := getEnvAsInt("MAX_PAGES", 50)
+	maxTotalBytes := getEnvAsInt("MAX_TOTAL_BYTES", 5*1024*1024)
+	maxBytesPerPage := getEnvAsInt("MAX_BYTES_PER_PAGE", 512*1024)
+	workerCount := getEnvAsInt("WORKER_COUNT", 4)
+	maxDepthInclusive := getEnvAsInt("MAX_DEPTH_INCLUSIVE", 3)
+	userAgent := getEnv("USER_AGENT", "")
+
 	cfg := crawler.Config{
 		SeedURL:           seedURL,
 		MaxPages:          maxPages,
-		MaxTotalBytes:     maxTotalBytes,
-		MaxBytesPerPage:   maxBytesPerPage,
+		MaxTotalBytes:     int64(maxTotalBytes),
+		MaxBytesPerPage:   int64(maxBytesPerPage),
 		Workers:           workerCount,
 		UserAgent:         userAgent,
 		MaxDepthInclusive: maxDepthInclusive,
@@ -247,4 +235,61 @@ func crawlAndBuildIndex(ctx context.Context, seedURL string) (*index.Index, erro
 	)
 
 	return idx, nil
+}
+
+func loadEnv(path string) {
+	file, err := os.Open(path)
+	if err != nil {
+		log.Printf(".env file not found: %s. Using defaults.", path)
+		return
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		os.Setenv(key, value)
+	}
+}
+
+func getEnv(key, fallback string) string {
+	if value, ok := os.LookupEnv(key); ok {
+		return value
+	}
+	return fallback
+}
+
+func getEnvAsInt(key string, fallback int) int {
+	value := getEnv(key, "")
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func getEnvAsDuration(key string, fallback time.Duration) time.Duration {
+	value := getEnv(key, "")
+	if value == "" {
+		return fallback
+	}
+	parsed, err := time.ParseDuration(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
 }
