@@ -126,8 +126,28 @@ var searchCmd = &cobra.Command{
 			log.Fatalf("search failed: %v", err)
 		}
 
-		// Fallback mechanism: if no results, try to recrawl
-		if len(resp.Results) == 0 {
+		// Smarter Fallback mechanism: check if we actually found a relevant topic
+		needsRecrawl := len(resp.Results) == 0
+
+		if !needsRecrawl {
+			// If we found local results, check if the query is actually in any of the titles.
+			// in this case if same word comes in other articles we need a optional
+			//check fallback 
+			//mechnaism
+			hasTitleMatch := false
+			queryLower := strings.ToLower(strings.TrimSpace(finalQuery))
+			for _, r := range resp.Results {
+				if strings.Contains(strings.ToLower(r.Title), queryLower) {
+					hasTitleMatch = true
+					break
+				}
+			}
+			if !hasTitleMatch {
+				needsRecrawl = true
+			}
+		}
+
+		if needsRecrawl {
 			seedQuery := finalQuery
 			if corrector != nil {
 				if corrected, source := corrector.Correct(seedQuery); corrected != "" && corrected != seedQuery {
@@ -141,7 +161,7 @@ var searchCmd = &cobra.Command{
 				log.Fatalf("no results + failed to resolve seed: %v", err)
 			}
 
-			log.Printf("no results. crawling new seed: %s", seedURL)
+			log.Printf("local index lacks a dedicated article. crawling new seed: %s", seedURL)
 
 			idx, err = crawlAndBuildIndex(ctx, seedURL)
 			if err != nil {
