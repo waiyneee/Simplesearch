@@ -6,8 +6,9 @@ import (
 
 // SearchRequest is the app-level input contract.
 type SearchRequest struct {
-	Query string
-	TopK  int
+	Query        string
+	TopK         int
+	SnippetChars int // Added to support dynamic snippet lengths from the CLI
 }
 
 // SearchResultView is user-facing model needed enriched output.
@@ -43,6 +44,12 @@ func (a *App) Run(req SearchRequest) (SearchResponse, error) {
 		return SearchResponse{}, err
 	}
 
+	// Default to 500 chars if the CLI doesn't specify it
+	chars := req.SnippetChars
+	if chars <= 0 {
+		chars = 500
+	}
+
 	enriched := make([]SearchResultView, 0, len(raw))
 	for _, r := range raw {
 		doc, ok := a.idx.GetDocument(r.DocID)
@@ -55,7 +62,7 @@ func (a *App) Run(req SearchRequest) (SearchResponse, error) {
 			Score:   r.Score,
 			Title:   doc.Title,
 			URL:     doc.URL,
-			Snippet: buildSnippet(doc.Body, 500),
+			Snippet: buildSnippet(doc.Body, chars), // Use the dynamic length here instead of hardcoded 500
 		})
 	}
 

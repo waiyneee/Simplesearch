@@ -121,6 +121,7 @@ var searchCmd = &cobra.Command{
 		resp, err := application.Run(app.SearchRequest{
 			Query: finalQuery,
 			TopK:  topKFlag,
+			SnippetChars: bodyLinesFlag* wrapWidthFlag,
 		})
 		if err != nil {
 			log.Fatalf("search failed: %v", err)
@@ -182,6 +183,7 @@ var searchCmd = &cobra.Command{
 			resp, err = application.Run(app.SearchRequest{
 				Query: finalQuery,
 				TopK:  topKFlag,
+				SnippetChars: bodyLinesFlag*wrapWidthFlag,
 			})
 			if err != nil {
 				log.Fatalf("search failed after rebuild: %v", err)
