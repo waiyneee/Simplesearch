@@ -26,7 +26,7 @@ var searchCmd = &cobra.Command{
 	Short: "Search your query specifically",
 	Long:  "We will auto fuzzy search and autocorrect your query to run our search indexing logic.",
 	Run: func(cmd *cobra.Command, args []string) {
-		loadEnv(".env")
+		// loadEnv(".env")
 
 		// Support -q flag
 		finalQuery := queryFlag
