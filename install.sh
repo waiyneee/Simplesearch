@@ -1,73 +1,184 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-# Configuration
-REPO="waiyneee/Simplesearch"
+# =========================================================
+# Simplesearch Installer
+# =========================================================
+
 BINARY_NAME="simplesearch"
 INSTALL_DIR="/usr/local/bin"
+BUILD_DIR="$(mktemp -d)"
 
-echo "========================================="
-echo "🚀 Installing Simplesearch..."
-echo "========================================="
+# =========================================================
+# Colors
+# =========================================================
 
-# 1. Detect Operating System
-OS="$(uname -s)"
-case "${OS}" in
-    Linux*)     PLATFORM="Linux";;
-    Darwin*)    PLATFORM="Darwin";;
-    *)          echo "❌ Unsupported OS: ${OS}"; exit 1;;
-esac
+RED='\033[1;31m'
+GREEN='\033[1;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[1;34m'
+CYAN='\033[1;36m'
+BOLD='\033[1m'
+DIM='\033[2m'
+NC='\033[0m'
 
-# 2. Detect Architecture
-ARCH="$(uname -m)"
-case "${ARCH}" in
-    x86_64*)    ARCHITECTURE="x86_64";;
-    aarch64*|arm64*) ARCHITECTURE="arm64";;
-    *)          echo "❌ Unsupported architecture: ${ARCH}"; exit 1;;
-esac
+# =========================================================
+# Helpers
+# =========================================================
 
-echo "✅ Detected Platform: ${PLATFORM} (${ARCHITECTURE})"
+phase() {
+    echo ""
+    echo -e "${BLUE}building${NC} ${CYAN}$1${NC}"
+}
 
-# 3. Fetch the latest release version from GitHub API
-echo "🔍 Finding latest release..."
-LATEST_TAG=$(curl -s "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+ok() {
+    echo -e "${GREEN}✓${NC} $1"
+}
 
-if [ -z "$LATEST_TAG" ]; then
-    echo "❌ Could not fetch latest release. Please check your internet connection or GitHub API limits."
+warn() {
+    echo -e "${YELLOW}warning:${NC} $1"
+}
+
+fail() {
+    echo -e "${RED}error:${NC} $1"
     exit 1
+}
+
+cleanup() {
+    rm -rf "${BUILD_DIR}"
+}
+
+trap cleanup EXIT
+
+# =========================================================
+# Header
+# =========================================================
+
+echo -e "${CYAN}${BOLD}"
+echo "Simplesearch Installer"
+echo -e "${NC}"
+
+# =========================================================
+# checkPhase
+# =========================================================
+
+phase "checkPhase"
+
+# Go
+if ! command -v go >/dev/null 2>&1; then
+    fail "Go is not installed"
 fi
 
-echo "📦 Latest version is ${LATEST_TAG}"
+ok "found Go"
+echo -e "${DIM}$(go version)${NC}"
 
-# 4. Construct the download URL (Matching your GoReleaser name_template)
-# e.g., simplesearch_Linux_x86_64.tar.gz
-TAR_FILE="${BINARY_NAME}_${PLATFORM}_${ARCHITECTURE}.tar.gz"
-DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${LATEST_TAG}/${TAR_FILE}"
+# go.mod
+if [ ! -f "go.mod" ]; then
+    fail "go.mod not found"
+fi
 
-echo "⬇️  Downloading from ${DOWNLOAD_URL}..."
+ok "found go.mod"
 
-# 5. Download and Extract
-TMP_DIR=$(mktemp -d)
-curl -sL "${DOWNLOAD_URL}" -o "${TMP_DIR}/${TAR_FILE}"
+# cmd directory
+if [ ! -d "./cmd" ]; then
+    fail "./cmd directory not found"
+fi
 
-echo "📂 Extracting binary..."
-tar -xzf "${TMP_DIR}/${TAR_FILE}" -C "${TMP_DIR}"
+ok "found cmd directory"
 
-# 6. Install the binary
-echo "🔑 Requesting sudo permissions to move binary to ${INSTALL_DIR}..."
-sudo mv "${TMP_DIR}/${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"
-sudo chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
+# Detect main package
+if [ -d "./cmd/Simplesearch" ]; then
+    BUILD_PATH="./cmd/Simplesearch"
+elif [ -d "./cmd/simplesearch" ]; then
+    BUILD_PATH="./cmd/simplesearch"
+else
+    fail "could not find main package under ./cmd"
+fi
 
-# 7. Cleanup
-rm -rf "${TMP_DIR}"
+ok "detected main package"
+echo -e "${DIM}${BUILD_PATH}${NC}"
 
-echo "========================================="
-echo "🎉 Simplesearch installed successfully!"
-echo "========================================="
-echo "You can now run the tool from anywhere by typing:"
-echo "  simplesearch search -q \"your query\""
+# main.go
+if ! find "${BUILD_PATH}" -name "main.go" | grep -q .; then
+    fail "main.go not found in ${BUILD_PATH}"
+fi
+
+ok "found main.go"
+
+# install dir
+if [ ! -d "${INSTALL_DIR}" ]; then
+    warn "${INSTALL_DIR} does not exist"
+    echo -e "${DIM}creating ${INSTALL_DIR}${NC}"
+
+    sudo mkdir -p "${INSTALL_DIR}"
+fi
+
+ok "install directory ready"
+
+echo -e "${DIM}${INSTALL_DIR}${NC}"
+# SQLite
+if grep -qi "sqlite" go.mod; then
+    ok "SQLite support enabled"
+else
+    warn "SQLite dependency not detected"
+fi
+
+# Redis
+if command -v redis-server >/dev/null 2>&1; then
+    ok "Redis installed"
+
+    if command -v redis-cli >/dev/null 2>&1 && redis-cli ping >/dev/null 2>&1; then
+        ok "Redis server running"
+    else
+        warn "Redis installed but not running"
+    fi
+else
+    warn "Redis not installed (optional)"
+fi
+
+# =========================================================
+# buildPhase
+# =========================================================
+
+phase "buildPhase"
+
+echo -e "${DIM}building in ${BUILD_DIR}${NC}"
+
+go build \
+    -trimpath \
+    -ldflags="-s -w" \
+    -o "${BUILD_DIR}/${BINARY_NAME}" \
+    "${BUILD_PATH}"
+
+ok "build completed"
+
+# =========================================================
+# installPhase
+# =========================================================
+
+phase "installPhase"
+
+sudo install -m 755 \
+    "${BUILD_DIR}/${BINARY_NAME}" \
+    "${INSTALL_DIR}/${BINARY_NAME}"
+
+ok "installed binary"
+echo -e "${DIM}${INSTALL_DIR}/${BINARY_NAME}${NC}"
+
+# =========================================================
+# finalPhase
+# =========================================================
+
+phase "finalPhase"
+
+ok "Simplesearch installed successfully"
+
 echo ""
-echo "Note: Simplesearch has an embedded SQLite database and a built-in memory cache."
-echo "If you want to use Redis for persistent caching, ensure Redis is installed and running,"
-echo "then run: simplesearch search --cache redis -q \"...\""
-echo "========================================="
+echo -e "${BOLD}usage${NC}"
+echo '  simplesearch search -q "your query"'
+
+echo ""
+echo -e "${BOLD}redis cache${NC}"
+echo '  simplesearch search --cache redis -q "your query"'
+
+echo ""
