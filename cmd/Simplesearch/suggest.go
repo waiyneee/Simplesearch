@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/spf13/cobra"
 	"github.com/waiyneee/Simplesearch/internal/storage"
@@ -14,8 +15,6 @@ var suggestCmd = &cobra.Command{
 	Short: "Get typo corrections and suggestions",
 	Long:  "Provides spelling suggestions by querying your local offline index as well as the Wikipedia API.",
 	Run: func(cmd *cobra.Command, args []string) {
-		loadEnv(".env")
-
 		finalQuery := queryFlag
 		if len(args) > 0 && finalQuery == "" {
 			finalQuery = args[0]
@@ -27,7 +26,11 @@ var suggestCmd = &cobra.Command{
 		}
 
 		// 1. Connect to DB to load local index
-		dbPath := getEnv("DB_PATH", "data/Simplesearch.db")
+		dbPath := os.Getenv("DB_PATH")
+		if dbPath == "" {
+			dbPath = "data/Simplesearch.db"
+		}
+
 		db, err := storage.OpenDbInstance(dbPath)
 		if err != nil {
 			log.Fatalf("open db failed: %v", err)
@@ -44,9 +47,8 @@ var suggestCmd = &cobra.Command{
 		// 2. Local Index Suggestion
 		if idx != nil && idx.DocCount() > 0 {
 			local := suggest.NewLocalIndexSuggestor(idx)
-			// Using 2 lev distance and 0.35 trigram sim as set in your corrector.go defaults
 			if val, ok := local.Suggest(finalQuery, 2, 0.35); ok && val != "" {
-				fmt.Printf(" Local Index Suggestion: %s\n", val)
+				fmt.Printf("Local Index Suggestion: %s\n", val)
 			} else {
 				fmt.Println(" Local Index Suggestion: No close matches found locally.")
 			}

@@ -4,4 +4,4 @@ data/*.json
 
 .envdata/Simplesearch.db
 data/Simplesearch.db
-.env
+

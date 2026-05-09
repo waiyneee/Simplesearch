@@ -1,12 +1,10 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"log"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -32,11 +30,14 @@ var searchCmd = &cobra.Command{
 			finalQuery = args[0]
 		}
 
-		runTimeout := getEnvAsDuration("RUN_TIMEOUT", 2*time.Minute)
-		ctx, cancel := context.WithTimeout(context.Background(), runTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), 115*time.Second)
 		defer cancel()
 
-		dbPath := getEnv("DB_PATH", "data/Simplesearch.db")
+		dbPath := os.Getenv("DB_PATH")
+		if dbPath == "" {
+			dbPath = "data/Simplesearch.db"
+		}
+
 		db, err := storage.OpenDbInstance(dbPath)
 		if err != nil {
 			log.Fatalf("open db failed: %v", err)
@@ -48,7 +49,6 @@ var searchCmd = &cobra.Command{
 		}
 
 		var idx *index.Index
-
 		idx, err = storage.LoadIndex(db)
 		if err != nil {
 			log.Printf("load index failed: %v", err)
@@ -63,27 +63,23 @@ var searchCmd = &cobra.Command{
 		wiki := suggest.NewWikiSuggestor()
 		corrector := suggest.NewCorrector(cache, local, wiki)
 
-		// ---------------------------------------------------------
-		//  Auto-correct the query ONCE upfront.
-		// This ensures both the crawler and the smart fallback logic
-
-	   // gets freshly corrected title at one go
-		
-		// ---------------------------------------------------------
+		// Auto-correct the query ONCE upfront
 		if finalQuery != "" && corrector != nil {
 			if corrected, source := corrector.Correct(finalQuery); corrected != "" && corrected != finalQuery {
 				log.Printf("auto-correct seed query (%s): %q -> %q", source, finalQuery, corrected)
-				finalQuery = corrected // Permanently update the query for this run
+				finalQuery = corrected
 			}
 		}
 
-		// Reindex logic (Triggered internally if DB is empty, as requested)
+		// Reindex logic
 		if idx == nil || idx.DocCount() == 0 {
 			var seedURL string
-			defaultSeedURL := getEnv("DEFAULT_SEED_URL", "")
+			defaultSeedURL := os.Getenv("DEFAULT_SEED_URL")
+			if defaultSeedURL == "" {
+				defaultSeedURL = "https://en.wikipedia.org/wiki/Cristiano_Ronaldo"
+			}
 
 			if finalQuery != "" {
-				// finalQuery is already corrected, just resolve the seed
 				seedURL, err = seed.ResolveWikipediaSeed(finalQuery)
 				if err != nil {
 					log.Printf("query seed failed, using default seed: %v", err)
@@ -93,8 +89,11 @@ var searchCmd = &cobra.Command{
 				seedURL = defaultSeedURL
 			}
 
-			log.Printf("building fresh index from seed: %s", seedURL)
+			if seedURL == "" {
+				log.Fatalf("Index is empty and no valid query or DEFAULT_SEED_URL provided to seed it.")
+			}
 
+			log.Printf("building fresh index from seed: %s", seedURL)
 			idx, err = crawlAndBuildIndex(ctx, seedURL)
 			if err != nil {
 				log.Fatalf("crawl/index failed: %v", err)
@@ -132,12 +131,10 @@ var searchCmd = &cobra.Command{
 			log.Fatalf("search failed: %v", err)
 		}
 
-		// Smarter Fallback mechanism: check if we actually found a relevant topic
+		// Smarter Fallback mechanism
 		needsRecrawl := len(resp.Results) == 0
 
 		if !needsRecrawl {
-			// If we found local results, check if the query is actually in any of the titles.
-			//its too impottant
 			hasTitleMatch := false
 			queryLower := strings.ToLower(strings.TrimSpace(finalQuery))
 			for _, r := range resp.Results {
@@ -152,7 +149,6 @@ var searchCmd = &cobra.Command{
 		}
 
 		if needsRecrawl {
-			// finalQuery is ALREADY corrected, so we don't need to run the corrector again here!
 			seedURL, err := seed.ResolveWikipediaSeed(finalQuery)
 			if err != nil {
 				log.Fatalf("no results + failed to resolve seed: %v", err)
@@ -218,32 +214,25 @@ var searchCmd = &cobra.Command{
 }
 
 // ---------------------------------------------------------
-// Helper Functions (PRESERVED EXACTLY AS SAME AS NEEDED MY MAIN.GO)
+// Helper Functions (Cleaned up!)
 // ---------------------------------------------------------
 
 func resolveRedisURL(flagValue string) string {
 	if flagValue != "" {
 		return flagValue
 	}
-	return getEnv("REDIS_URL", "")
+	return os.Getenv("REDIS_URL")
 }
 
 func crawlAndBuildIndex(ctx context.Context, seedURL string) (*index.Index, error) {
-	maxPages := getEnvAsInt("MAX_PAGES", 50)
-	maxTotalBytes := getEnvAsInt("MAX_TOTAL_BYTES", 5*1024*1024)
-	maxBytesPerPage := getEnvAsInt("MAX_BYTES_PER_PAGE", 512*1024)
-	workerCount := getEnvAsInt("WORKER_COUNT", 4)
-	maxDepthInclusive := getEnvAsInt("MAX_DEPTH_INCLUSIVE", 3)
-	userAgent := getEnv("USER_AGENT", "")
-
 	cfg := crawler.Config{
 		SeedURL:           seedURL,
-		MaxPages:          maxPages,
-		MaxTotalBytes:     int64(maxTotalBytes),
-		MaxBytesPerPage:   int64(maxBytesPerPage),
-		Workers:           workerCount,
-		UserAgent:         userAgent,
-		MaxDepthInclusive: maxDepthInclusive,
+		MaxPages:          50,
+		MaxTotalBytes:     5242890,
+		MaxBytesPerPage:   524286,
+		Workers:           4,
+		UserAgent:         "SimpleSearchBot/0.1 (+https://github.com/waiyneee/Simplesearch)",
+		MaxDepthInclusive: 3,
 	}
 
 	crawlStats, pages, err := crawler.Run(ctx, cfg)
@@ -281,59 +270,4 @@ func crawlAndBuildIndex(ctx context.Context, seedURL string) (*index.Index, erro
 		indexed, duplicates, indexErrs, len(pages))
 
 	return idx, nil
-}
-
-func loadEnv(path string) {
-	file, err := os.Open(path)
-	if err != nil {
-		log.Printf(".env file not found: %s. Using defaults.", path)
-		return
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		key := strings.TrimSpace(parts[0])
-		value := strings.TrimSpace(parts[1])
-		os.Setenv(key, value)
-	}
-}
-
-func getEnv(key, fallback string) string {
-	if value, ok := os.LookupEnv(key); ok {
-		return value
-	}
-	return fallback
-}
-
-func getEnvAsInt(key string, fallback int) int {
-	value := getEnv(key, "")
-	if value == "" {
-		return fallback
-	}
-	parsed, err := strconv.Atoi(value)
-	if err != nil {
-		return fallback
-	}
-	return parsed
-}
-
-func getEnvAsDuration(key string, fallback time.Duration) time.Duration {
-	value := getEnv(key, "")
-	if value == "" {
-		return fallback
-	}
-	parsed, err := time.ParseDuration(value)
-	if err != nil {
-		return fallback
-	}
-	return parsed
 }

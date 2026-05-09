@@ -27,20 +27,28 @@ var rootCmd = &cobra.Command{
 }
 
 func Execute() {
-
 	rootCmd.AddCommand(searchCmd)
 	rootCmd.AddCommand(suggestCmd)
 
-	loadEnv(".env")
+	// Use native OS env vars for defaults if they exist
+	//no need of loadEnv here
+	cacheDef := os.Getenv("CACHE_MODE")
+	if cacheDef == "" {
+		cacheDef = "redis" //redis would be installed
+	}
 
-	// Mapping
+	redisDef := os.Getenv("REDIS_URL")
+	if redisDef == "" {
+		redisDef = "redis://localhost:6379"
+	}
+	// Map flags to Cobra
 	rootCmd.PersistentFlags().StringVarP(&queryFlag, "query", "q", "", "search query")
 	rootCmd.PersistentFlags().IntVarP(&topKFlag, "limit", "k", 10, "number of results to return")
 	rootCmd.PersistentFlags().IntVar(&bodyLinesFlag, "body-lines", 8, "max lines of snippet to show per result")
 	rootCmd.PersistentFlags().IntVar(&wrapWidthFlag, "wrap", 110, "wrap width for snippet output")
 
-	rootCmd.PersistentFlags().StringVar(&cacheModeFlag, "cache", getEnv("CACHE_MODE", "memory"), "cache mode: memory|redis")
-	rootCmd.PersistentFlags().StringVar(&redisURLFlag, "redis-url", getEnv("REDIS_URL", ""), "redis connection URL (overrides REDIS_URL)")
+	rootCmd.PersistentFlags().StringVar(&cacheModeFlag, "cache", cacheDef, "cache mode: memory|redis")
+	rootCmd.PersistentFlags().StringVar(&redisURLFlag, "redis-url", redisDef, "redis connection URL (overrides REDIS_URL)")
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
