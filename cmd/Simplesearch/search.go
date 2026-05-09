@@ -26,8 +26,6 @@ var searchCmd = &cobra.Command{
 	Short: "Search your query specifically",
 	Long:  "We will auto fuzzy search and autocorrect your query to run our search indexing logic.",
 	Run: func(cmd *cobra.Command, args []string) {
-		// loadEnv(".env")
-
 		// Support -q flag
 		finalQuery := queryFlag
 		if len(args) > 0 && finalQuery == "" {
@@ -65,21 +63,28 @@ var searchCmd = &cobra.Command{
 		wiki := suggest.NewWikiSuggestor()
 		corrector := suggest.NewCorrector(cache, local, wiki)
 
+		// ---------------------------------------------------------
+		//  Auto-correct the query ONCE upfront.
+		// This ensures both the crawler and the smart fallback logic
+
+	   // gets freshly corrected title at one go
+		
+		// ---------------------------------------------------------
+		if finalQuery != "" && corrector != nil {
+			if corrected, source := corrector.Correct(finalQuery); corrected != "" && corrected != finalQuery {
+				log.Printf("auto-correct seed query (%s): %q -> %q", source, finalQuery, corrected)
+				finalQuery = corrected // Permanently update the query for this run
+			}
+		}
+
 		// Reindex logic (Triggered internally if DB is empty, as requested)
 		if idx == nil || idx.DocCount() == 0 {
 			var seedURL string
 			defaultSeedURL := getEnv("DEFAULT_SEED_URL", "")
 
 			if finalQuery != "" {
-				seedQuery := finalQuery
-				if corrector != nil {
-					if corrected, source := corrector.Correct(seedQuery); corrected != "" && corrected != seedQuery {
-						log.Printf("auto-correct seed query (%s): %q -> %q", source, seedQuery, corrected)
-						seedQuery = corrected
-					}
-				}
-
-				seedURL, err = seed.ResolveWikipediaSeed(seedQuery)
+				// finalQuery is already corrected, just resolve the seed
+				seedURL, err = seed.ResolveWikipediaSeed(finalQuery)
 				if err != nil {
 					log.Printf("query seed failed, using default seed: %v", err)
 					seedURL = defaultSeedURL
@@ -132,9 +137,7 @@ var searchCmd = &cobra.Command{
 
 		if !needsRecrawl {
 			// If we found local results, check if the query is actually in any of the titles.
-			// in this case if same word comes in other articles we need a optional
-			//check fallback
-			//mechnaism
+			//its too impottant
 			hasTitleMatch := false
 			queryLower := strings.ToLower(strings.TrimSpace(finalQuery))
 			for _, r := range resp.Results {
@@ -149,15 +152,8 @@ var searchCmd = &cobra.Command{
 		}
 
 		if needsRecrawl {
-			seedQuery := finalQuery
-			if corrector != nil {
-				if corrected, source := corrector.Correct(seedQuery); corrected != "" && corrected != seedQuery {
-					log.Printf("auto-correct seed query (%s): %q -> %q", source, seedQuery, corrected)
-					seedQuery = corrected
-				}
-			}
-
-			seedURL, err := seed.ResolveWikipediaSeed(seedQuery)
+			// finalQuery is ALREADY corrected, so we don't need to run the corrector again here!
+			seedURL, err := seed.ResolveWikipediaSeed(finalQuery)
 			if err != nil {
 				log.Fatalf("no results + failed to resolve seed: %v", err)
 			}
