@@ -119,9 +119,9 @@ var searchCmd = &cobra.Command{
 		}
 
 		resp, err := application.Run(app.SearchRequest{
-			Query: finalQuery,
-			TopK:  topKFlag,
-			SnippetChars: bodyLinesFlag* wrapWidthFlag,
+			Query:        finalQuery,
+			TopK:         topKFlag,
+			SnippetChars: bodyLinesFlag * wrapWidthFlag,
 		})
 		if err != nil {
 			log.Fatalf("search failed: %v", err)
@@ -133,7 +133,7 @@ var searchCmd = &cobra.Command{
 		if !needsRecrawl {
 			// If we found local results, check if the query is actually in any of the titles.
 			// in this case if same word comes in other articles we need a optional
-			//check fallback 
+			//check fallback
 			//mechnaism
 			hasTitleMatch := false
 			queryLower := strings.ToLower(strings.TrimSpace(finalQuery))
@@ -181,9 +181,9 @@ var searchCmd = &cobra.Command{
 			}
 
 			resp, err = application.Run(app.SearchRequest{
-				Query: finalQuery,
-				TopK:  topKFlag,
-				SnippetChars: bodyLinesFlag*wrapWidthFlag,
+				Query:        finalQuery,
+				TopK:         topKFlag,
+				SnippetChars: bodyLinesFlag * wrapWidthFlag,
 			})
 			if err != nil {
 				log.Fatalf("search failed after rebuild: %v", err)

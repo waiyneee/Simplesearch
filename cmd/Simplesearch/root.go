@@ -27,11 +27,10 @@ var rootCmd = &cobra.Command{
 }
 
 func Execute() {
-	
+
 	rootCmd.AddCommand(searchCmd)
 	rootCmd.AddCommand(suggestCmd)
 
-	
 	loadEnv(".env")
 
 	// Mapping
@@ -39,8 +38,7 @@ func Execute() {
 	rootCmd.PersistentFlags().IntVarP(&topKFlag, "limit", "k", 10, "number of results to return")
 	rootCmd.PersistentFlags().IntVar(&bodyLinesFlag, "body-lines", 8, "max lines of snippet to show per result")
 	rootCmd.PersistentFlags().IntVar(&wrapWidthFlag, "wrap", 110, "wrap width for snippet output")
-	
-	
+
 	rootCmd.PersistentFlags().StringVar(&cacheModeFlag, "cache", getEnv("CACHE_MODE", "memory"), "cache mode: memory|redis")
 	rootCmd.PersistentFlags().StringVar(&redisURLFlag, "redis-url", getEnv("REDIS_URL", ""), "redis connection URL (overrides REDIS_URL)")
 

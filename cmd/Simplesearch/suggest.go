@@ -46,12 +46,12 @@ var suggestCmd = &cobra.Command{
 			local := suggest.NewLocalIndexSuggestor(idx)
 			// Using 2 lev distance and 0.35 trigram sim as set in your corrector.go defaults
 			if val, ok := local.Suggest(finalQuery, 2, 0.35); ok && val != "" {
-				fmt.Printf("✅ Local Index Suggestion: %s\n", val)
+				fmt.Printf(" Local Index Suggestion: %s\n", val)
 			} else {
-				fmt.Println("❌ Local Index Suggestion: No close matches found locally.")
+				fmt.Println(" Local Index Suggestion: No close matches found locally.")
 			}
 		} else {
-			fmt.Println("❌ Local Index Suggestion: Index is empty.")
+			fmt.Println("Local Index Suggestion: Index is empty.")
 		}
 
 		// 3. Wiki API Suggestion
