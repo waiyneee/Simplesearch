@@ -18,11 +18,11 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "simplesearch",
+	Use:   "Simplesearch",
 	Short: "A simple CLI app for managing search responses over Wikipedia",
 	Long:  "An advanced fuzzy searching CLI tool that uses Wikipedia's pages to crawl content and indexes it.",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("Welcome to Simplesearch! Run 'simplesearch search -q \"your query\"' to start.")
+		fmt.Println("Welcome to Simplesearch! Run 'Simplesearch search -q \"your query\"' to start.")
 	},
 }
 

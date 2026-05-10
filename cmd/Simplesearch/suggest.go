@@ -21,7 +21,7 @@ var suggestCmd = &cobra.Command{
 		}
 
 		if finalQuery == "" {
-			fmt.Println("Please provide a query to suggest corrections for. Example: simplesearch suggest \"appple\"")
+			fmt.Println("Please provide a query to suggest corrections for. Example: Simplesearch suggest \"appple\"")
 			return
 		}
 

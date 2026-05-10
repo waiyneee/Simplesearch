@@ -5,7 +5,7 @@ set -euo pipefail
 # Simplesearch Installer
 # =========================================================
 
-BINARY_NAME="simplesearch"
+BINARY_NAME="Simplesearch"
 INSTALL_DIR="/usr/local/bin"
 BUILD_DIR="$(mktemp -d)"
 
@@ -175,10 +175,10 @@ ok "Simplesearch installed successfully"
 
 echo ""
 echo -e "${BOLD}usage${NC}"
-echo '  simplesearch search -q "your query"'
+echo '  Simplesearch search -q "your query"'
 
 echo ""
 echo -e "${BOLD}redis cache${NC}"
-echo '  simplesearch search --cache redis -q "your query"'
+echo '  Simplesearch search --cache redis -q "your query"'
 
 echo ""

@@ -61,10 +61,10 @@ chmod +x install.sh
 ./install.sh
 ```
 
-This installs the binary as **`/usr/local/bin/simplesearch`** (uses `sudo` when needed). After a successful install, confirm the CLI is on your `PATH`:
+This installs the binary as **`/usr/local/bin/Simplesearch`** (uses `sudo` when needed). After a successful install, confirm the CLI is on your `PATH`:
 
 ```bash
-simplesearch --help
+Simplesearch --help
 ```
 
 ### What `install.sh` does
@@ -76,8 +76,8 @@ simplesearch --help
 Example usage after installation:
 
 ```bash
-simplesearch search -q "your query"
-simplesearch search --cache redis -q "your query"
+Simplesearch search -q "your query"
+Simplesearch search --cache redis -q "your query"
 ```
 
 ---
@@ -86,13 +86,13 @@ simplesearch search --cache redis -q "your query"
 
 ```bash
 # From the repository root
-go build -trimpath -ldflags="-s -w" -o simplesearch ./cmd/Simplesearch
+go build -trimpath -ldflags="-s -w" -o Simplesearch ./cmd/Simplesearch
 
 # Search (opens the SQLite store under data/, may crawl + index on first run)
-./simplesearch search -q "your query"
+./Simplesearch search -q "your query"
 
 # Spelling / suggestions (local index + Wikipedia API)
-./simplesearch suggest -q "appple"
+./Simplesearch suggest -q "appple"
 ```
 
 ## CLI usage
@@ -103,9 +103,9 @@ Configuration is driven by **subcommands and flags** shown below — no `.env` o
 
 | Command | Purpose |
 |---------|---------|
-| `simplesearch` | Prints a short welcome and hints |
-| `simplesearch search` | Run a search (query via `-q` or a single positional argument) |
-| `simplesearch suggest` | Show local + Wikipedia spelling / title suggestions |
+| `Simplesearch` | Prints a short welcome and hints |
+| `Simplesearch search` | Run a search (query via `-q` or a single positional argument) |
+| `Simplesearch suggest` | Show local + Wikipedia spelling / title suggestions |
 
 **Global flags** (defined on the root command, available to subcommands)
 
@@ -121,9 +121,9 @@ Configuration is driven by **subcommands and flags** shown below — no `.env` o
 Examples:
 
 ```bash
-simplesearch search -q "your query" -k 5 --cache memory
-simplesearch search --cache redis --redis-url "redis://127.0.0.1:6379/0" -q "nodejs"
-simplesearch suggest "recieve"
+Simplesearch search -q "your query" -k 5 --cache memory
+Simplesearch search --cache redis --redis-url "redis://127.0.0.1:6379/0" -q "nodejs"
+Simplesearch suggest "recieve"
 ```
 
 ---
